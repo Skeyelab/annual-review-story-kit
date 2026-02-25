@@ -11,17 +11,18 @@
   "description": "AnnualReview.dev",
   "homepage": "https://annualreview.dev",
   "scripts": {
-    "normalize": "node scripts/normalize.js",
-    "validate-evidence": "node scripts/validate-evidence.js",
-    "collect": "node scripts/collect-github.js",
-    "generate": "node scripts/generate-review.js",
+    "normalize": "node --import tsx/esm scripts/normalize.js",
+    "validate-evidence": "node --import tsx/esm scripts/validate-evidence.js",
+    "collect": "node --import tsx/esm scripts/collect-github.js",
+    "generate": "node --import tsx/esm scripts/generate-review.js",
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest run --coverage",
-    "start": "node server.js"
+    "start": "node --import tsx/esm server.js",
+    "typecheck": "tsc --noEmit"
   },
   "type": "module",
   "dependencies": {
@@ -37,10 +38,15 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "4.0.18",
     "@vitest/ui": "4.0.18",
     "jsdom": "^28.1.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
     "vite": "^6.0.3",
     "vitest": "^4.0.18"
   }

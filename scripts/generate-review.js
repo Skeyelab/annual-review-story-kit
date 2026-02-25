@@ -7,9 +7,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { parseArgs as parseArgsBase } from "../lib/parse-args.js";
-import { runPipeline } from "../lib/run-pipeline.js";
-import { generateMarkdown } from "../lib/generate-markdown.js";
+import { parseArgs as parseArgsBase } from "../lib/parse-args.ts";
+import { runPipeline } from "../lib/run-pipeline.ts";
+import { generateMarkdown } from "../lib/generate-markdown.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

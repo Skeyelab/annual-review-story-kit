@@ -3,14 +3,16 @@
  * contributions when the serialized input would exceed maxTokens.
  */
 
+import type { Evidence, Contribution } from "../types/evidence.js";
+
 /** Rough token estimate: ~4 chars per token for JSON/English. */
-export function estimateTokens(str) {
+export function estimateTokens(str: unknown): number {
   if (typeof str !== "string") return 0;
   return Math.ceil(str.length / 4);
 }
 
 /** Fields we always keep; arrays are capped separately. */
-const SLIM_KEYS = [
+const SLIM_KEYS: (keyof Contribution)[] = [
   "id",
   "type",
   "title",
@@ -27,30 +29,34 @@ const SLIM_KEYS = [
 ];
 
 /** Smallest set needed for clustering + citations. */
-const MINIMAL_KEYS = ["id", "type", "title", "url", "repo", "merged_at"];
+const MINIMAL_KEYS: (keyof Contribution)[] = ["id", "type", "title", "url", "repo", "merged_at"];
 
 const MAX_LABELS = 8;
 const MAX_LINKED_ISSUES = 5;
 
-function capArray(arr, max) {
+function capArray<T>(arr: T[] | undefined, max: number): T[] | undefined {
   if (!Array.isArray(arr) || arr.length <= max) return arr;
   return arr.slice(0, max);
 }
 
-/**
- * @param {Array<Record<string, unknown>>} contributions
- * @param {{ bodyChars?: number, summaryChars?: number, minimal?: boolean }} opts
- * @returns {Array<Record<string, unknown>>}
- */
-export function slimContributions(contributions, opts = {}) {
+export interface SlimOptions {
+  bodyChars?: number;
+  summaryChars?: number;
+  minimal?: boolean;
+}
+
+export function slimContributions(
+  contributions: Contribution[],
+  opts: SlimOptions = {}
+): Record<string, unknown>[] {
   const { bodyChars = 400, summaryChars = 500, minimal = false } = opts;
   const keys = minimal ? MINIMAL_KEYS : SLIM_KEYS;
   return contributions.map((c) => {
-    const out = {};
+    const out: Record<string, unknown> = {};
     for (const k of keys) {
       if (c[k] === undefined) continue;
-      if (k === "labels") out[k] = capArray(c[k], MAX_LABELS);
-      else if (k === "linked_issues") out[k] = capArray(c[k], MAX_LINKED_ISSUES);
+      if (k === "labels") out[k] = capArray(c[k] as string[], MAX_LABELS);
+      else if (k === "linked_issues") out[k] = capArray(c[k] as string[], MAX_LINKED_ISSUES);
       else out[k] = c[k];
     }
     const sumLen = minimal ? 200 : summaryChars;
@@ -78,14 +84,13 @@ const MAX_SHRINK_ITERATIONS = 20;
  * Returns evidence with contributions slimmer so that getPayload(evidence) fits in maxTokens.
  * Tries reducing body/summary length (bounded iterations, larger steps), then minimal view,
  * then binary search on contribution count by recency.
- *
- * @param {{ timeframe: object, role_context_optional?: object, contributions: Array<object> }} evidence
- * @param {(ev: object) => string} getPayload
- * @param {number} [maxTokens]
- * @returns {{ timeframe: object, role_context_optional?: object, contributions: Array<object> }}
  */
-export function fitEvidenceToBudget(evidence, getPayload, maxTokens = DEFAULT_MAX_USER_TOKENS) {
-  let contributions = evidence.contributions;
+export function fitEvidenceToBudget(
+  evidence: Evidence,
+  getPayload: (ev: Evidence) => string,
+  maxTokens = DEFAULT_MAX_USER_TOKENS
+): Evidence {
+  let contributions: Contribution[] = evidence.contributions;
   let bodyChars = 600;
   let summaryChars = 500;
 
@@ -99,7 +104,7 @@ export function fitEvidenceToBudget(evidence, getPayload, maxTokens = DEFAULT_MA
     iterations++;
     bodyChars = Math.max(0, bodyChars - 200);
     summaryChars = Math.max(0, summaryChars - 150);
-    contributions = slimContributions(evidence.contributions, { bodyChars, summaryChars });
+    contributions = slimContributions(evidence.contributions, { bodyChars, summaryChars }) as unknown as Contribution[];
     payload = getPayload({ ...evidence, contributions });
   }
 
@@ -108,7 +113,7 @@ export function fitEvidenceToBudget(evidence, getPayload, maxTokens = DEFAULT_MA
   }
 
   // Aggressive: minimal view (id, type, title, url, repo, merged_at, short summary only)
-  contributions = slimContributions(evidence.contributions, { minimal: true });
+  contributions = slimContributions(evidence.contributions, { minimal: true }) as unknown as Contribution[];
   payload = getPayload({ ...evidence, contributions });
   if (estimateTokens(payload) <= maxTokens) {
     return { ...evidence, contributions };
@@ -121,10 +126,10 @@ export function fitEvidenceToBudget(evidence, getPayload, maxTokens = DEFAULT_MA
   );
   let low = 1;
   let high = byDate.length;
-  let best = [];
+  let best: Contribution[] = [];
   while (low <= high) {
     const mid = (low + high) >> 1;
-    const candidate = slimContributions(byDate.slice(0, mid), { minimal: true });
+    const candidate = slimContributions(byDate.slice(0, mid), { minimal: true }) as unknown as Contribution[];
     const candidatePayload = getPayload({ ...evidence, contributions: candidate });
     if (estimateTokens(candidatePayload) <= maxTokens) {
       best = candidate;

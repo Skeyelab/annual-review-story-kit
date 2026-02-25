@@ -3,12 +3,94 @@
  * No LLM calls; pure templating.
  */
 
-function evidenceLinks(evidence = []) {
+import type { Timeframe } from "../types/evidence.js";
+
+interface EvidenceRef {
+  id?: string;
+  title?: string;
+  url?: string;
+}
+
+interface ThemeEntry {
+  theme_id?: string;
+  theme_name?: string;
+  one_liner?: string;
+  why_it_matters?: string;
+  confidence?: string;
+  notes_or_assumptions?: string;
+  anchor_evidence?: EvidenceRef[];
+}
+
+interface Bullet {
+  text?: string;
+  evidence?: EvidenceRef[];
+}
+
+interface BulletsByTheme {
+  theme_id?: string;
+  bullets?: Bullet[];
+}
+
+interface Story {
+  title?: string;
+  situation?: string;
+  task?: string;
+  actions?: string[];
+  results?: string[];
+  evidence?: EvidenceRef[];
+  confidence?: string;
+}
+
+interface SelfEvalSection {
+  text?: string;
+  evidence?: EvidenceRef[];
+}
+
+interface SelfEvalSections {
+  summary?: SelfEvalSection;
+  key_accomplishments?: (Bullet & { evidence?: EvidenceRef[] })[];
+  how_i_worked?: SelfEvalSection;
+  growth?: SelfEvalSection;
+  next_year_goals?: Bullet[];
+}
+
+interface ThemesOutput {
+  themes?: ThemeEntry[];
+}
+
+interface BulletsOutput {
+  top_10_bullets_overall?: Bullet[];
+  bullets_by_theme?: BulletsByTheme[];
+}
+
+interface StoriesOutput {
+  stories?: Story[];
+}
+
+interface SelfEvalOutput {
+  sections?: SelfEvalSections;
+}
+
+interface GenerateMarkdownInput {
+  themes?: ThemesOutput;
+  bullets?: BulletsOutput;
+  stories?: StoriesOutput;
+  self_eval?: SelfEvalOutput;
+}
+
+interface GenerateMarkdownOptions {
+  timeframe?: Timeframe;
+}
+
+function evidenceLinks(evidence: EvidenceRef[] = []): string {
   if (!evidence.length) return "";
   return evidence.map((e) => `[${e.id || e.title || "ref"}](${e.url})`).join(", ");
 }
 
-export function generateMarkdown({ themes, bullets, stories, self_eval }, { timeframe } = {}) {
+export function generateMarkdown(
+  { themes, bullets, stories, self_eval }: GenerateMarkdownInput,
+  { timeframe }: GenerateMarkdownOptions = {}
+): string {
   const lines = [];
 
   // ── Header ──────────────────────────────────────────────────────────────────
@@ -59,7 +141,7 @@ export function generateMarkdown({ themes, bullets, stories, self_eval }, { time
     if (byTheme.length) {
       const themeNameMap = Object.fromEntries(themeList.map((t) => [t.theme_id, t.theme_name]));
       byTheme.forEach((bt) => {
-        const name = themeNameMap[bt.theme_id] || bt.theme_id;
+        const name = themeNameMap[bt.theme_id ?? ""] || bt.theme_id;
         lines.push(`### ${name}`, "");
         (bt.bullets ?? []).forEach((b) => {
           const refs = b.evidence?.length ? ` (${evidenceLinks(b.evidence)})` : "";
@@ -139,10 +221,10 @@ export function generateMarkdown({ themes, bullets, stories, self_eval }, { time
 
   // ── Evidence Appendix ───────────────────────────────────────────────────────
   // Collect all unique evidence items referenced across all sections
-  const seen = new Set();
-  const allEvidence = [];
+  const seen = new Set<string>();
+  const allEvidence: EvidenceRef[] = [];
 
-  function addEvidence(ev = []) {
+  function addEvidence(ev: EvidenceRef[] | undefined = []) {
     for (const e of ev) {
       const key = e.url || e.id;
       if (key && !seen.has(key)) {

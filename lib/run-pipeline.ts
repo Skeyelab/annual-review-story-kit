@@ -11,31 +11,32 @@ import OpenAI from "openai";
 import { OpenAI as PostHogOpenAI } from "@posthog/ai/openai";
 import { PostHog } from "posthog-node";
 import { fitEvidenceToBudget, estimateTokens, slimContributions } from "./context-budget.js";
+import type { Evidence } from "../types/evidence.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = join(__dirname, "..", "prompts");
 
-function loadPrompt(name) {
+function loadPrompt(name: string): string {
   return readFileSync(join(PROMPTS_DIR, name), "utf8").trim();
 }
 
 const SYSTEM_PROMPT = loadPrompt("00_system.md");
 
 const RESULT_CACHE_MAX = 50;
-const resultCache = new Map();
+const resultCache = new Map<string, PipelineResult>();
 
 /** Clear result cache (for tests). */
-export function clearPipelineCache() {
+export function clearPipelineCache(): void {
   resultCache.clear();
 }
 
-function cacheKey(evidence, model) {
+function cacheKey(evidence: unknown, model: string): string {
   const str = JSON.stringify({ evidence, model });
   return createHash("sha256").update(str).digest("hex");
 }
 
 /** Pull first {...} from LLM response text and parse as JSON. */
-export function extractJson(text) {
+export function extractJson(text: string): unknown {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}") + 1;
   if (start === -1 || end === 0) throw new Error("No JSON object in response");
@@ -43,34 +44,49 @@ export function extractJson(text) {
 }
 
 /** Collect all evidence ids referenced in themes and bullets (and optional stories). */
-function collectEvidenceIds(themes, bullets, stories = null) {
-  const ids = new Set();
-  for (const t of themes?.themes ?? []) {
+function collectEvidenceIds(
+  themes: Record<string, unknown> | null,
+  bullets: Record<string, unknown> | null,
+  stories: Record<string, unknown> | null = null
+): Set<string> {
+  const ids = new Set<string>();
+  for (const t of (themes as { themes?: Array<{ evidence_ids?: string[]; anchor_evidence?: Array<{ id?: string }> }> })?.themes ?? []) {
     for (const id of t.evidence_ids ?? []) ids.add(id);
     for (const a of t.anchor_evidence ?? []) if (a?.id) ids.add(a.id);
   }
-  for (const g of bullets?.bullets_by_theme ?? []) {
+  for (const g of (bullets as { bullets_by_theme?: Array<{ bullets?: Array<{ evidence?: Array<{ id?: string }> }> }> })?.bullets_by_theme ?? []) {
     for (const b of g.bullets ?? []) {
       for (const e of b.evidence ?? []) if (e?.id) ids.add(e.id);
     }
   }
-  for (const s of stories?.stories ?? []) {
+  for (const s of (stories as { stories?: Array<{ evidence?: Array<{ id?: string }> }> })?.stories ?? []) {
     for (const e of s.evidence ?? []) if (e?.id) ids.add(e.id);
   }
   return ids;
 }
 
 /** Filter contributions to those whose id is in the set; return slimmed for payload. */
-function contributionsForPayload(contributions, idSet, opts = {}) {
+function contributionsForPayload(
+  contributions: Evidence["contributions"],
+  idSet: Set<string>,
+  opts: Record<string, unknown> = {}
+): Record<string, unknown>[] {
   const byId = new Map(contributions.map((c) => [c.id, c]));
   const subset = idSet.size > 0
-    ? [...idSet].map((id) => byId.get(id)).filter(Boolean)
+    ? [...idSet].map((id) => byId.get(id)).filter((c): c is Evidence["contributions"][0] => c !== undefined)
     : contributions;
   return slimContributions(subset, opts);
 }
 
+interface PipelineStep {
+  key: string;
+  label: string;
+  promptFile: string;
+  buildInput: (evidence: Evidence, prev: Record<string, unknown>) => string;
+}
+
 /** Declarative pipeline steps: key, label, prompt file, and buildInput(evidence, previousResults). */
-const STEPS = [
+const STEPS: PipelineStep[] = [
   {
     key: "themes",
     label: "Themes",
@@ -101,13 +117,16 @@ const STEPS = [
     label: "STAR stories",
     promptFile: "30_star_stories.md",
     buildInput(evidence, prev) {
-      const ids = collectEvidenceIds(prev.themes, prev.bullets);
+      const ids = collectEvidenceIds(
+        prev.themes as Record<string, unknown>,
+        prev.bullets as Record<string, unknown>
+      );
       const contribs = contributionsForPayload(evidence.contributions, ids, { bodyChars: 300, summaryChars: 400 });
       return JSON.stringify(
         {
           timeframe: evidence.timeframe,
           themes: prev.themes,
-          bullets_by_theme: prev.bullets.bullets_by_theme,
+          bullets_by_theme: (prev.bullets as { bullets_by_theme?: unknown })?.bullets_by_theme,
           contributions: contribs,
         },
         null,
@@ -120,15 +139,19 @@ const STEPS = [
     label: "Self-eval sections",
     promptFile: "40_self_eval_sections.md",
     buildInput(evidence, prev) {
-      const ids = collectEvidenceIds(prev.themes, prev.bullets, prev.stories);
+      const ids = collectEvidenceIds(
+        prev.themes as Record<string, unknown>,
+        prev.bullets as Record<string, unknown>,
+        prev.stories as Record<string, unknown>
+      );
       const contribs = contributionsForPayload(evidence.contributions, ids, { minimal: true });
       return JSON.stringify(
         {
           timeframe: evidence.timeframe,
           role_context_optional: evidence.role_context_optional,
           themes: prev.themes,
-          top_10_bullets_overall: prev.bullets.top_10_bullets_overall ?? [],
-          stories: prev.stories.stories ?? [],
+          top_10_bullets_overall: (prev.bullets as { top_10_bullets_overall?: unknown[] })?.top_10_bullets_overall ?? [],
+          stories: (prev.stories as { stories?: unknown[] })?.stories ?? [],
           contributions: contribs,
         },
         null,
@@ -138,13 +161,39 @@ const STEPS = [
   },
 ];
 
-export async function runPipeline(evidence, {
-  apiKey = process.env.OPENAI_API_KEY,
-  model = "gpt-4o-mini",
-  onProgress,
-  posthogTraceId,
-  posthogDistinctId,
-} = {}) {
+export interface PipelineResult {
+  themes: unknown;
+  bullets: unknown;
+  stories: unknown;
+  self_eval: unknown;
+}
+
+export interface PipelineOptions {
+  apiKey?: string;
+  model?: string;
+  onProgress?: (progress: {
+    stepIndex: number;
+    total: number;
+    step: string;
+    label: string;
+    prevStepMs?: number;
+    prevStepPayloadTokens?: number;
+    totalMs?: number;
+  }) => void;
+  posthogTraceId?: string;
+  posthogDistinctId?: string;
+}
+
+export async function runPipeline(
+  evidence: Evidence,
+  {
+    apiKey = process.env.OPENAI_API_KEY,
+    model = "gpt-4o-mini",
+    onProgress,
+    posthogTraceId,
+    posthogDistinctId,
+  }: PipelineOptions = {}
+): Promise<PipelineResult> {
   if (!apiKey) throw new Error("OPENAI_API_KEY required");
 
   const key = cacheKey(evidence, model);
@@ -167,18 +216,22 @@ export async function runPipeline(evidence, {
   const phClient = phKey
     ? new PostHog(phKey, { host: process.env.POSTHOG_HOST || "https://us.i.posthog.com" })
     : null;
-  const openai = phClient
-    ? new PostHogOpenAI({ apiKey, posthog: phClient })
+  const openai: OpenAI = phClient
+    ? new PostHogOpenAI({ apiKey, posthog: phClient }) as unknown as OpenAI
     : new OpenAI({ apiKey });
 
   const total = STEPS.length;
-  const posthogOpts = {};
+  const posthogOpts: Record<string, string> = {};
   if (posthogTraceId != null) posthogOpts.posthogTraceId = posthogTraceId;
   if (posthogDistinctId != null) posthogOpts.posthogDistinctId = posthogDistinctId;
 
   try {
   const totalStart = Date.now();
-  function progress(stepIndex, label, extra = {}) {
+  function progress(
+    stepIndex: number,
+    label: string | undefined,
+    extra: Record<string, unknown> = {}
+  ) {
     if (typeof onProgress === "function") {
       onProgress({
         stepIndex,
@@ -186,15 +239,15 @@ export async function runPipeline(evidence, {
         step: STEPS[stepIndex - 1].key,
         label: label || STEPS[stepIndex - 1].label,
         ...extra,
-      });
+      } as Parameters<NonNullable<typeof onProgress>>[0]);
     }
   }
 
   evidence = fitEvidenceToBudget(evidence, (ev) => STEPS[0].buildInput(ev, {}));
 
-  let previousResults = {};
-  let prevStepMs;
-  let prevStepPayloadTokens;
+  const previousResults: Record<string, unknown> = {};
+  let prevStepMs: number | undefined;
+  let prevStepPayloadTokens: number | undefined;
 
   for (let stepIndex = 1; stepIndex <= total; stepIndex++) {
     const step = STEPS[stepIndex - 1];
@@ -219,7 +272,7 @@ export async function runPipeline(evidence, {
 
   progress(total, undefined, { prevStepMs, prevStepPayloadTokens, totalMs: Date.now() - totalStart });
 
-  const result = {
+  const result: PipelineResult = {
     themes: previousResults.themes,
     bullets: previousResults.bullets,
     stories: previousResults.stories,

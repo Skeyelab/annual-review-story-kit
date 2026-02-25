@@ -2,22 +2,12 @@ import { createHmac } from "crypto";
 
 const COOKIE_NAME = "ar_session";
 
-/**
- * @param {string} id
- * @param {string} secret
- * @returns {string}
- */
-export function signSessionId(id, secret) {
+export function signSessionId(id: string, secret: string): string {
   const sig = createHmac("sha256", secret).update(id).digest("hex");
   return `${id}.${sig}`;
 }
 
-/**
- * @param {string} value
- * @param {string} secret
- * @returns {string | null}
- */
-export function verifySessionId(value, secret) {
+export function verifySessionId(value: string, secret: string): string | null {
   if (!value || typeof value !== "string") return null;
   const i = value.lastIndexOf(".");
   if (i <= 0) return null;
@@ -27,12 +17,10 @@ export function verifySessionId(value, secret) {
   return sig === expected ? id : null;
 }
 
-/**
- * @param {{ headers?: { cookie?: string } }} req
- * @param {string} secret
- * @returns {string | null}
- */
-export function getSessionIdFromRequest(req, secret) {
+export function getSessionIdFromRequest(
+  req: { headers?: { cookie?: string } },
+  secret: string
+): string | null {
   const cookie = req?.headers?.cookie;
   if (!cookie) return null;
   const match = cookie.match(new RegExp(`${COOKIE_NAME}=([^;]+)`));
@@ -41,13 +29,17 @@ export function getSessionIdFromRequest(req, secret) {
   return verifySessionId(value, secret);
 }
 
-/**
- * @param {{ setHeader: (k: string, v: string) => void }} res
- * @param {string} sessionId
- * @param {string} secret
- * @param {{ secure?: boolean, maxAge?: number }} opts
- */
-export function setSessionCookie(res, sessionId, secret, opts = {}) {
+export interface CookieOpts {
+  secure?: boolean;
+  maxAge?: number;
+}
+
+export function setSessionCookie(
+  res: { setHeader: (k: string, v: string) => void },
+  sessionId: string,
+  secret: string,
+  opts: CookieOpts = {}
+): void {
   const value = signSessionId(sessionId, secret);
   const secure = opts.secure ?? false;
   const maxAge = opts.maxAge ?? 60 * 60 * 24 * 7; // 7 days
@@ -62,10 +54,7 @@ export function setSessionCookie(res, sessionId, secret, opts = {}) {
   res.setHeader("Set-Cookie", parts.join("; "));
 }
 
-/**
- * @param {{ setHeader: (k: string, v: string) => void }} res
- */
-export function clearSessionCookie(res) {
+export function clearSessionCookie(res: { setHeader: (k: string, v: string) => void }): void {
   res.setHeader(
     "Set-Cookie",
     `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`
@@ -74,13 +63,12 @@ export function clearSessionCookie(res) {
 
 const STATE_COOKIE = "ar_oauth_state";
 
-/**
- * @param {{ setHeader: (k: string, v: string) => void }} res
- * @param {string} state
- * @param {string} secret
- * @param {{ secure?: boolean }} opts
- */
-export function setStateCookie(res, state, secret, opts = {}) {
+export function setStateCookie(
+  res: { setHeader: (k: string, v: string) => void },
+  state: string,
+  secret: string,
+  opts: { secure?: boolean } = {}
+): void {
   const secretTrimmed = String(secret).trim();
   const sig = createHmac("sha256", secretTrimmed).update(state).digest("hex");
   const value = `${state}.${sig}`;
@@ -95,13 +83,11 @@ export function setStateCookie(res, state, secret, opts = {}) {
   res.setHeader("Set-Cookie", parts.join("; "));
 }
 
-/**
- * @param {{ headers?: { cookie?: string } }} req
- * @param {string} secret
- * @param {{ log?: (msg: string, detail?: string) => void }} opts
- * @returns {string | null}
- */
-export function getStateFromRequest(req, secret, opts = {}) {
+export function getStateFromRequest(
+  req: { headers?: { cookie?: string } },
+  secret: string,
+  opts: { log?: (msg: string, detail?: string) => void } = {}
+): string | null {
   const log = opts.log || (() => {});
   const cookie = req?.headers?.cookie;
   if (!cookie || !secret) {
@@ -130,10 +116,7 @@ export function getStateFromRequest(req, secret, opts = {}) {
   return state;
 }
 
-/**
- * @param {{ setHeader: (k: string, v: string) => void }} res
- */
-export function clearStateCookie(res) {
+export function clearStateCookie(res: { setHeader: (k: string, v: string) => void }): void {
   res.setHeader(
     "Set-Cookie",
     `${STATE_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`

@@ -1,13 +1,28 @@
+export interface FlagSpec {
+  name: string;
+  option: string;
+  type: "string" | "boolean";
+}
+
+export interface PositionalSpec {
+  name: string;
+}
+
+export interface ParseArgsSchema {
+  flags?: FlagSpec[];
+  positionals?: PositionalSpec[];
+  defaults?: Record<string, unknown | (() => unknown)>;
+}
+
 /**
  * Schema-driven CLI argument parser. Use from scripts to avoid duplicated parseArgs logic.
- *
- * @param {{ flags: Array<{ name: string, option: string, type: 'string' | 'boolean' }>, positionals?: Array<{ name: string }>, defaults?: Record<string, unknown | (() => unknown)> }} schema
- * @param {string[]} [argv=process.argv.slice(2)]
- * @returns {Record<string, unknown>}
  */
-export function parseArgs(schema, argv = process.argv.slice(2)) {
-  const result = {};
-  const positionals = [];
+export function parseArgs(
+  schema: ParseArgsSchema,
+  argv: string[] = process.argv.slice(2)
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  const positionals: string[] = [];
 
   for (const f of schema.flags ?? []) {
     result[f.name] = f.type === "boolean" ? false : null;
@@ -30,13 +45,13 @@ export function parseArgs(schema, argv = process.argv.slice(2)) {
   }
 
   for (let j = 0; j < (schema.positionals ?? []).length; j++) {
-    const p = schema.positionals[j];
+    const p = schema.positionals![j];
     result[p.name] = positionals[j] ?? null;
   }
 
   for (const [key, val] of Object.entries(schema.defaults ?? {})) {
     if (result[key] == null) {
-      result[key] = typeof val === "function" ? val() : val;
+      result[key] = typeof val === "function" ? (val as () => unknown)() : val;
     }
   }
 
