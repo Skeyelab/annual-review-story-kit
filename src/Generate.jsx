@@ -1,7 +1,8 @@
 // Page: 1) Get GitHub data (OAuth or token or CLI), 2) Paste/upload evidence JSON, 3) Generate → themes, bullets, stories, self-eval.
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import "./Generate.css";
 import { generateMarkdown } from "../lib/generate-markdown.js";
+import { redactRepoNames, extractRepoNames, filterExcludedContributions } from "../lib/redact.js";
 import { posthog } from "./posthog";
 import { parseJsonResponse, pollJob } from "./api.js";
 import { useAuth } from "./hooks/useAuth.js";
@@ -20,6 +21,9 @@ export default function Generate() {
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [redactRepos, setRedactRepos] = useState(false);
+  const [excludedReposText, setExcludedReposText] = useState("");
+  const [privacyOpen, setPrivacyOpen] = useState(false);
 
   const onEvidenceReceived = useCallback((text) => {
     setEvidenceText(text);
@@ -75,6 +79,11 @@ export default function Generate() {
     }
     if (goals.trim() && !evidence.goals) {
       evidence = { ...evidence, goals: goals.trim() };
+    }
+    // Apply exclusions before sending to the API
+    const excludedRepos = excludedReposText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (excludedRepos.length) {
+      evidence = filterExcludedContributions(evidence, excludedRepos, []);
     }
     setError(null);
     setLoading(true);
@@ -133,6 +142,14 @@ export default function Generate() {
     logout();
   };
 
+  const repoNames = useMemo(() => {
+    try {
+      return extractRepoNames(JSON.parse(evidenceText));
+    } catch {
+      return [];
+    }
+  }, [evidenceText]);
+
   const handleDownloadReport = () => {
     let timeframe;
     try {
@@ -141,12 +158,24 @@ export default function Generate() {
     } catch {
       // no timeframe available
     }
-    const md = generateMarkdown(result, { timeframe });
+    const output = redactRepos ? redactRepoNames(result, repoNames) : result;
+    const md = generateMarkdown(output, { timeframe });
     const blob = new Blob([md], { type: "text/markdown" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = "annual-review-report.md";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadJson = () => {
+    const output = redactRepos ? redactRepoNames(result, repoNames) : result;
+    const blob = new Blob([JSON.stringify(output, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "annual-review-report.json";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -325,6 +354,32 @@ yarn normalize --input raw.json --output evidence.json`}
         {error && <p className="generate-error">{error}</p>}
         {progress && <p className="generate-progress">{progress}</p>}
 
+        <details className="generate-privacy" open={privacyOpen} onToggle={(e) => setPrivacyOpen(e.target.open)}>
+          <summary className="generate-privacy-summary">Privacy &amp; redaction</summary>
+          <div className="generate-privacy-body">
+            <label className="generate-privacy-check">
+              <input
+                type="checkbox"
+                checked={redactRepos}
+                onChange={(e) => setRedactRepos(e.target.checked)}
+              />
+              Redact repo names in exports (replace with "internal repo")
+            </label>
+            <label className="generate-privacy-label" htmlFor="generate-excluded-repos">
+              Exclude repos from generation <span className="generate-goals-optional">(one per line, e.g. org/repo)</span>
+            </label>
+            <textarea
+              id="generate-excluded-repos"
+              className="generate-textarea generate-privacy-textarea"
+              placeholder={"org/repo-name\norg/another-repo"}
+              value={excludedReposText}
+              onChange={(e) => setExcludedReposText(e.target.value)}
+              rows={3}
+              spellCheck={false}
+            />
+          </div>
+        </details>
+
         <button type="button" className="generate-btn" onClick={handleGenerate} disabled={loading}>
           {loading ? "Generating…" : "3. Generate review"}
         </button>
@@ -336,7 +391,7 @@ yarn normalize --input raw.json --output evidence.json`}
             <ResultSection title="Bullets" data={result.bullets} />
             <ResultSection title="STAR stories" data={result.stories} />
             <ResultSection title="Self-eval sections" data={result.self_eval} />
-            <ReportSection result={result} evidenceText={evidenceText} onDownload={handleDownloadReport} />
+            <ReportSection result={result} evidenceText={evidenceText} redactRepos={redactRepos} repoNames={repoNames} onDownload={handleDownloadReport} onDownloadJson={handleDownloadJson} />
           </div>
         )}
       </main>
@@ -345,7 +400,7 @@ yarn normalize --input raw.json --output evidence.json`}
 }
 
 /** Markdown report section: preview + download. */
-function ReportSection({ result, evidenceText, onDownload }) {
+function ReportSection({ result, evidenceText, redactRepos, repoNames, onDownload, onDownloadJson }) {
   const [showPreview, setShowPreview] = useState(false);
   let timeframe;
   try {
@@ -354,11 +409,12 @@ function ReportSection({ result, evidenceText, onDownload }) {
   } catch {
     // no timeframe
   }
-  const md = generateMarkdown(result, { timeframe });
+  const output = redactRepos ? redactRepoNames(result, repoNames) : result;
+  const md = generateMarkdown(output, { timeframe });
   return (
     <section className="generate-section generate-report-section">
       <div className="generate-section-head">
-        <h3>Markdown report</h3>
+        <h3>Export report</h3>
         <div className="generate-report-actions">
           <button
             type="button"
@@ -372,7 +428,7 @@ function ReportSection({ result, evidenceText, onDownload }) {
             className="generate-copy"
             onClick={() => navigator.clipboard.writeText(md)}
           >
-            Copy
+            Copy .md
           </button>
           <button
             type="button"
@@ -380,6 +436,13 @@ function ReportSection({ result, evidenceText, onDownload }) {
             onClick={onDownload}
           >
             Download .md
+          </button>
+          <button
+            type="button"
+            className="generate-download-btn"
+            onClick={onDownloadJson}
+          >
+            Download .json
           </button>
         </div>
       </div>

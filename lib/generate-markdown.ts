@@ -24,6 +24,7 @@ interface ThemeEntry {
 interface Bullet {
   text?: string;
   evidence?: EvidenceRef[];
+  theme_id?: string;
 }
 
 interface BulletsByTheme {
@@ -39,6 +40,7 @@ interface Story {
   results?: string[];
   evidence?: EvidenceRef[];
   confidence?: string;
+  theme_id?: string;
 }
 
 interface SelfEvalSection {
@@ -219,42 +221,65 @@ export function generateMarkdown(
     }
   }
 
-  // ── Evidence Appendix ───────────────────────────────────────────────────────
-  // Collect all unique evidence items referenced across all sections
-  const seen = new Set<string>();
-  const allEvidence: EvidenceRef[] = [];
+  // ── Evidence Appendix (grouped by theme) ────────────────────────────────────
+  // Group evidence by theme_id; unthemed evidence falls into a "General" group.
+  type ThemeGroup = { name: string; refs: EvidenceRef[] };
+  const themeGroups: { id: string; group: ThemeGroup }[] = [];
+  const themeGroupMap = new Map<string, ThemeGroup>();
 
-  function addEvidence(ev: EvidenceRef[] | undefined = []) {
+  themeList.forEach((t) => {
+    if (t.theme_id) {
+      const group: ThemeGroup = { name: t.theme_name || t.theme_id, refs: [] };
+      themeGroups.push({ id: t.theme_id, group });
+      themeGroupMap.set(t.theme_id, group);
+    }
+  });
+
+  // Initialize the General group upfront for unthemed evidence
+  const generalGroup: ThemeGroup = { name: "General", refs: [] };
+  themeGroups.push({ id: "__general__", group: generalGroup });
+  themeGroupMap.set("__general__", generalGroup);
+
+  const globalSeen = new Set<string>();
+
+  function addToGroup(themeId: string | undefined, ev: EvidenceRef[] | undefined = []) {
+    const targetId = themeId && themeGroupMap.has(themeId) ? themeId : "__general__";
+    const group = themeGroupMap.get(targetId)!;
     for (const e of ev) {
       const key = e.url || e.id;
-      if (key && !seen.has(key)) {
-        seen.add(key);
-        allEvidence.push(e);
+      if (key && !globalSeen.has(key)) {
+        globalSeen.add(key);
+        group.refs.push(e);
       }
     }
   }
 
-  if (summary?.evidence) addEvidence(summary.evidence);
-  themeList.forEach((t) => addEvidence(t.anchor_evidence));
-  top10.forEach((b) => addEvidence(b.evidence));
-  byTheme.forEach((bt) => (bt.bullets ?? []).forEach((b) => addEvidence(b.evidence)));
-  storyList.forEach((s) => addEvidence(s.evidence));
-  if (sections.key_accomplishments) sections.key_accomplishments.forEach((i) => addEvidence(i.evidence));
-  if (sections.how_i_worked) addEvidence(sections.how_i_worked.evidence);
-  if (sections.growth) addEvidence(sections.growth.evidence);
-  if (sections.next_year_goals) sections.next_year_goals.forEach((i) => addEvidence(i.evidence));
+  themeList.forEach((t) => addToGroup(t.theme_id, t.anchor_evidence));
+  byTheme.forEach((bt) => (bt.bullets ?? []).forEach((b) => addToGroup(bt.theme_id, b.evidence)));
+  storyList.forEach((s) => addToGroup(s.theme_id, s.evidence));
+  top10.forEach((b) => addToGroup(b.theme_id, b.evidence));
+  if (summary?.evidence) addToGroup(undefined, summary.evidence);
+  if (sections.key_accomplishments) sections.key_accomplishments.forEach((i) => addToGroup(undefined, i.evidence));
+  if (sections.how_i_worked) addToGroup(undefined, sections.how_i_worked.evidence);
+  if (sections.growth) addToGroup(undefined, sections.growth.evidence);
+  if (sections.next_year_goals) sections.next_year_goals.forEach((i) => addToGroup(undefined, i.evidence));
 
-  if (allEvidence.length) {
+  const hasAnyEvidence = themeGroups.some(({ group }) => group.refs.length > 0);
+  if (hasAnyEvidence) {
     lines.push("---", "", "## Evidence Appendix", "");
-    lines.push("| ID | Title | URL |");
-    lines.push("|----|-------|-----|");
-    allEvidence.forEach((e) => {
-      const id = e.id || "";
-      const title = (e.title || "").replace(/\|/g, "\\|");
-      const url = e.url || "";
-      lines.push(`| ${id} | ${title} | ${url} |`);
-    });
-    lines.push("");
+    for (const { group } of themeGroups) {
+      if (!group.refs.length) continue;
+      lines.push(`### ${group.name}`, "");
+      lines.push("| ID | Title | URL |");
+      lines.push("|----|-------|-----|");
+      group.refs.forEach((e) => {
+        const id = e.id || "";
+        const title = (e.title || "").replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
+        const url = e.url || "";
+        lines.push(`| ${id} | ${title} | ${url} |`);
+      });
+      lines.push("");
+    }
   }
 
   return lines.join("\n");

@@ -526,6 +526,64 @@
   color: var(--text-muted);
 }
 
+/* ─── Privacy & Redaction ─── */
+
+.generate-privacy {
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+}
+
+.generate-privacy-summary {
+  padding: 0.6rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.generate-privacy-summary::before {
+  content: "🔒";
+  font-size: 0.85em;
+}
+
+.generate-privacy-summary:hover {
+  color: var(--text);
+}
+
+.generate-privacy-body {
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.generate-privacy-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.generate-privacy-label {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.generate-privacy-textarea {
+  margin-bottom: 0;
+}
+
 .generate-footer-note a {
   color: var(--accent);
 }

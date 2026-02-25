@@ -166,6 +166,12 @@ describe("generateMarkdown", () => {
     expect(md).not.toContain("## Evidence Appendix");
   });
 
+  it("groups evidence appendix by theme name", () => {
+    const md = generateMarkdown(sampleData);
+    const appendixSection = md.split("## Evidence Appendix")[1] ?? "";
+    expect(appendixSection).toContain("### Reliability & incident response");
+  });
+
   it("escapes pipe characters in titles for the appendix table", () => {
     const data = {
       ...sampleData,
