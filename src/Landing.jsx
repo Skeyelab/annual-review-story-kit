@@ -23,16 +23,16 @@ const FEATURES = [
   },
   {
     icon: "⎋",
-    title: "Evidence Appendix",
-    desc: "Every claim traced to a URL. No hallucinated metrics, no inflated scope.",
+    title: "Self-eval Sections",
+    desc: "Draft summary and self-eval sections for review forms. Every claim linked to a PR.",
   },
 ];
 
 const STEPS = [
-  { verb: "Connect", detail: "Sign in with GitHub. Public or private repos—your call." },
-  { verb: "Select", detail: "Pick the date range and repositories that matter." },
-  { verb: "Generate", detail: "AI reads your PRs, reviews, and issues. Outputs structured narrative." },
-  { verb: "Ship it", detail: "Copy the Markdown into your review form. Done before lunch." },
+  { verb: "Connect", detail: "Sign in with GitHub (public or private), or paste a token. CLI option keeps your token on your machine." },
+  { verb: "Fetch", detail: "Set your review date range and fetch your PRs and reviews in one click." },
+  { verb: "Generate", detail: "One click: themes, bullets, STAR stories, and self-eval sections—all evidence-linked." },
+  { verb: "Ship it", detail: "Copy sections or download the full report as Markdown. Done before lunch." },
 ];
 
 export default function Landing() {
@@ -89,9 +89,9 @@ export default function Landing() {
             </h1>
             <p className="hero-sub">
               You shipped all year. You shouldn't have to spend a week
-              proving it. <strong>Free, no signup.</strong> Paste your GitHub
-              activity, get an evidence-backed annual review in minutes—every
-              claim linked to a real PR.
+              proving it. <strong>Free, no signup.</strong> Sign in with GitHub,
+              use a token, or run the CLI. Get themes, bullets, STAR stories, and
+              self-eval sections—every claim linked to a real PR.
             </p>
             <div className="hero-actions">
               <a href="/generate" className="btn btn-primary btn-lg" onClick={() => posthog?.capture("cta_clicked", { location: "hero" })}>
