@@ -6,12 +6,12 @@ import { randomUUID } from "crypto";
 import { runGenerateReview, parseArgs } from "../scripts/generate-review.js";
 
 describe("parseArgs", () => {
-  it("defaults input to evidence.json and outDir to cwd", () => {
+  it("defaults input to evidence.json and outDir to ./out", () => {
     const orig = process.argv.slice(2);
     process.argv = ["node", "generate-review.js"];
     const out = parseArgs();
     expect(out.input).toContain("evidence.json");
-    expect(out.outDir).toBe(process.cwd());
+    expect(out.outDir).toBe(join(process.cwd(), "out"));
     process.argv = ["node", "generate-review.js", ...orig];
   });
 

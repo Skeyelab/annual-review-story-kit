@@ -1,9 +1,33 @@
-// Page: 1) Get GitHub data (token or CLI), 2) Paste/upload evidence JSON, 3) Generate → themes, bullets, stories, self-eval.
-import React, { useState } from "react";
+// Page: 1) Get GitHub data (OAuth or token or CLI), 2) Paste/upload evidence JSON, 3) Generate → themes, bullets, stories, self-eval.
+import React, { useState, useEffect } from "react";
 import "./Generate.css";
 
 const GITHUB_TOKEN_URL = "https://github.com/settings/tokens/new?scopes=repo&description=AnnualReview.dev";
 const REPO_URL = "https://github.com/Skeyelab/annualreview.com";
+
+async function parseJsonResponse(res) {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(res.ok ? "Server returned empty response." : `Request failed (${res.status}). Server may have timed out or crashed.`);
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid response from server: ${text.slice(0, 80)}…`);
+  }
+}
+
+async function pollJob(jobId, onProgress) {
+  for (;;) {
+    const res = await fetch(`/api/jobs/${jobId}`);
+    const job = await parseJsonResponse(res);
+    if (!res.ok) throw new Error(job.error || "Job not found");
+    if (job.progress && typeof onProgress === "function") onProgress(job.progress);
+    if (job.status === "done") return job.result;
+    if (job.status === "failed") throw new Error(job.error || "Job failed");
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
 
 function getDefaultDateRange() {
   const from = new Date();
@@ -12,17 +36,41 @@ function getDefaultDateRange() {
 }
 
 export default function Generate() {
-  // Evidence textarea and generate-result state
+  const [user, setUser] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [evidenceText, setEvidenceText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-  // "Fetch from GitHub" form: token + date range (default last 12 months)
   const [collectToken, setCollectToken] = useState("");
   const [collectStart, setCollectStart] = useState(() => getDefaultDateRange().start);
   const [collectEnd, setCollectEnd] = useState(() => getDefaultDateRange().end);
   const [collectLoading, setCollectLoading] = useState(false);
+  const [collectProgress, setCollectProgress] = useState("");
   const [collectError, setCollectError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("not authenticated"))))
+      .then((data) => setUser({ login: data.login, scope: data.scope }))
+      .catch(() => setUser(null))
+      .finally(() => setAuthChecked(true));
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/jobs", { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then((data) => {
+        const job = data.latest;
+        if (job?.status === "done" && job.result) {
+          setEvidenceText(JSON.stringify(job.result, null, 2));
+          setError(null);
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   const handleGenerate = async () => {
     let evidence;
@@ -45,19 +93,27 @@ export default function Generate() {
     setError(null);
     setLoading(true);
     setResult(null);
+    setProgress("");
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(evidence),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Generate failed");
-      setResult(data);
+      const data = await parseJsonResponse(res);
+      if (res.status === 202 && data.job_id) {
+        const out = await pollJob(data.job_id, setProgress);
+        setResult(out);
+      } else if (!res.ok) {
+        throw new Error(data.error || "Generate failed");
+      } else {
+        setResult(data);
+      }
     } catch (e) {
       setError(e.message || "Pipeline failed. Is OPENAI_API_KEY set?");
     } finally {
       setLoading(false);
+      setProgress("");
     }
   };
 
@@ -74,7 +130,7 @@ export default function Generate() {
       const base = (import.meta.env.BASE_URL || "/").replace(/\/?$/, "/");
       const res = await fetch(`${base}sample-evidence.json`);
       if (!res.ok) throw new Error(`Sample not found (${res.status})`);
-      const data = await res.json();
+      const data = await parseJsonResponse(res);
       setEvidenceText(JSON.stringify(data, null, 2));
       setError(null);
     } catch (e) {
@@ -83,31 +139,44 @@ export default function Generate() {
   };
 
   const handleFetchGitHub = async () => {
-    if (!collectToken.trim()) {
+    if (!user && !collectToken.trim()) {
       setCollectError("Paste your GitHub token above.");
       return;
     }
     setCollectError(null);
     setCollectLoading(true);
+    setCollectProgress("");
     try {
+      const body = user
+        ? { start_date: collectStart, end_date: collectEnd }
+        : { token: collectToken.trim(), start_date: collectStart, end_date: collectEnd };
       const res = await fetch("/api/collect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: collectToken.trim(),
-          start_date: collectStart,
-          end_date: collectEnd,
-        }),
+        credentials: "include",
+        body: JSON.stringify(body),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Fetch failed");
-      setEvidenceText(JSON.stringify(data, null, 2));
-      setError(null);
+      const data = await parseJsonResponse(res);
+      if (res.status === 202 && data.job_id) {
+        const evidence = await pollJob(data.job_id, setCollectProgress);
+        setEvidenceText(JSON.stringify(evidence, null, 2));
+        setError(null);
+      } else if (!res.ok) {
+        throw new Error(data.error || "Fetch failed");
+      } else {
+        setEvidenceText(JSON.stringify(data, null, 2));
+        setError(null);
+      }
     } catch (e) {
       setCollectError(e.message || "Could not fetch from GitHub.");
     } finally {
       setCollectLoading(false);
+      setCollectProgress("");
     }
+  };
+
+  const handleLogout = () => {
+    fetch("/api/auth/logout", { method: "POST", credentials: "include" }).then(() => setUser(null));
   };
 
   return (
@@ -117,7 +186,15 @@ export default function Generate() {
           <span className="generate-logo-icon">⟡</span>
           AnnualReview.dev
         </a>
-        <a href="/" className="generate-back">← Back</a>
+        <div className="generate-header-actions">
+          {authChecked && user && (
+            <span className="generate-signed-in">
+              Signed in as <strong>{user.login}</strong>
+              <button type="button" className="generate-logout" onClick={handleLogout}>Log out</button>
+            </span>
+          )}
+          <a href="/" className="generate-back">← Back</a>
+        </div>
       </header>
 
       <main className="generate-main">
@@ -127,37 +204,64 @@ export default function Generate() {
           <h2 id="get-data-heading" className="generate-get-data-title">1. Get your GitHub data</h2>
 
           <div className="generate-get-data-options">
-            <div className="generate-option-card">
-              <h3 className="generate-option-heading">Connect GitHub (easiest)</h3>
-              <p className="generate-option-desc">
-                Use a Personal Access Token. We fetch your PRs and reviews for the date range and never store your token.
-              </p>
-              <a href={GITHUB_TOKEN_URL} target="_blank" rel="noopener noreferrer" className="generate-token-link">
-                Create a token (repo scope) →
-              </a>
-              <div className="generate-collect-form">
-                <input
-                  type="password"
-                  placeholder="Paste your GitHub token (ghp_... or gho_...)"
-                  value={collectToken}
-                  onChange={(e) => { setCollectToken(e.target.value); setCollectError(null); }}
-                  className="generate-collect-input"
-                  autoComplete="off"
-                />
-                <div className="generate-collect-dates">
-                  <label className="generate-collect-label">
-                    From <input type="date" value={collectStart} onChange={(e) => setCollectStart(e.target.value)} className="generate-collect-date" />
-                  </label>
-                  <label className="generate-collect-label">
-                    To <input type="date" value={collectEnd} onChange={(e) => setCollectEnd(e.target.value)} className="generate-collect-date" />
-                  </label>
+            {authChecked && user ? (
+              <div className="generate-option-card">
+                <h3 className="generate-option-heading">Fetch your data</h3>
+                <p className="generate-option-desc">Fetch your PRs and reviews for the date range.</p>
+                <div className="generate-collect-form">
+                  <div className="generate-collect-dates">
+                    <label className="generate-collect-label">
+                      From <input type="date" value={collectStart} onChange={(e) => setCollectStart(e.target.value)} className="generate-collect-date" />
+                    </label>
+                    <label className="generate-collect-label">
+                      To <input type="date" value={collectEnd} onChange={(e) => setCollectEnd(e.target.value)} className="generate-collect-date" />
+                    </label>
+                  </div>
+                  {collectError && <p className="generate-error">{collectError}</p>}
+                  {collectProgress && <p className="generate-progress">{collectProgress}</p>}
+                  <button type="button" className="generate-collect-btn" onClick={handleFetchGitHub} disabled={collectLoading}>
+                    {collectLoading ? "Fetching…" : "Fetch my data"}
+                  </button>
                 </div>
-                {collectError && <p className="generate-error">{collectError}</p>}
-                <button type="button" className="generate-collect-btn" onClick={handleFetchGitHub} disabled={collectLoading}>
-                  {collectLoading ? "Fetching…" : "Fetch my data"}
-                </button>
               </div>
-            </div>
+            ) : (
+              <>
+                <div className="generate-option-card">
+                  <h3 className="generate-option-heading">Sign in with GitHub</h3>
+                  <p className="generate-option-desc">
+                    We fetch your PRs and reviews for the date range. We never store your code.
+                  </p>
+                  <div className="generate-oauth-buttons">
+                    <a href="/api/auth/github?scope=public" className="generate-oauth-btn">Connect (public repos only)</a>
+                    <a href="/api/auth/github?scope=private" className="generate-oauth-btn generate-oauth-btn-private">Connect (include private repos)</a>
+                  </div>
+                  <p className="generate-option-desc generate-or">Or paste a Personal Access Token:</p>
+                  <div className="generate-collect-form">
+                    <input
+                      type="password"
+                      placeholder="Paste your GitHub token (ghp_... or gho_...)"
+                      value={collectToken}
+                      onChange={(e) => { setCollectToken(e.target.value); setCollectError(null); }}
+                      className="generate-collect-input"
+                      autoComplete="off"
+                    />
+                    <div className="generate-collect-dates">
+                      <label className="generate-collect-label">
+                        From <input type="date" value={collectStart} onChange={(e) => setCollectStart(e.target.value)} className="generate-collect-date" />
+                      </label>
+                      <label className="generate-collect-label">
+                        To <input type="date" value={collectEnd} onChange={(e) => setCollectEnd(e.target.value)} className="generate-collect-date" />
+                      </label>
+                    </div>
+                    {collectError && <p className="generate-error">{collectError}</p>}
+                    {collectProgress && <p className="generate-progress">{collectProgress}</p>}
+                    <button type="button" className="generate-collect-btn" onClick={handleFetchGitHub} disabled={collectLoading}>
+                      {collectLoading ? "Fetching…" : "Fetch my data"}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="generate-option-card">
               <h3 className="generate-option-heading">Use the terminal</h3>
@@ -201,6 +305,7 @@ yarn normalize --input raw.json --output evidence.json`}
         <p className="generate-hint">On mobile, pasting long JSON can be cut off—use “Upload evidence.json” for large data.</p>
 
         {error && <p className="generate-error">{error}</p>}
+        {progress && <p className="generate-progress">{progress}</p>}
 
         <button type="button" className="generate-btn" onClick={handleGenerate} disabled={loading}>
           {loading ? "Generating…" : "3. Generate review"}
