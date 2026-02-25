@@ -209,4 +209,6 @@ function apiRoutesPlugin() {
 
 export default defineConfig({
   plugins: [react(), apiRoutesPlugin()],
+  // Expose POSTHOG_API_KEY to client as VITE_POSTHOG_API_KEY (Vite only exposes VITE_* by default)
+  envPrefix: ["VITE_", "POSTHOG"],
 });
