@@ -93,7 +93,7 @@ const STEPS: PipelineStep[] = [
     promptFile: "10_theme_cluster.md",
     buildInput(evidence) {
       return JSON.stringify(
-        { timeframe: evidence.timeframe, role_context_optional: evidence.role_context_optional, contributions: evidence.contributions },
+        { timeframe: evidence.timeframe, role_context_optional: evidence.role_context_optional, goals: evidence.goals, contributions: evidence.contributions },
         null,
         2
       );
@@ -106,7 +106,7 @@ const STEPS: PipelineStep[] = [
     buildInput(evidence, prev) {
       const slimmed = slimContributions(evidence.contributions, { bodyChars: 400, summaryChars: 500 });
       return JSON.stringify(
-        { timeframe: evidence.timeframe, themes: prev.themes, contributions: slimmed },
+        { timeframe: evidence.timeframe, goals: evidence.goals, themes: prev.themes, contributions: slimmed },
         null,
         2
       );
@@ -125,6 +125,7 @@ const STEPS: PipelineStep[] = [
       return JSON.stringify(
         {
           timeframe: evidence.timeframe,
+          goals: evidence.goals,
           themes: prev.themes,
           bullets_by_theme: (prev.bullets as { bullets_by_theme?: unknown })?.bullets_by_theme,
           contributions: contribs,
@@ -148,6 +149,7 @@ const STEPS: PipelineStep[] = [
       return JSON.stringify(
         {
           timeframe: evidence.timeframe,
+          goals: evidence.goals,
           role_context_optional: evidence.role_context_optional,
           themes: prev.themes,
           top_10_bullets_overall: (prev.bullets as { top_10_bullets_overall?: unknown[] })?.top_10_bullets_overall ?? [],
