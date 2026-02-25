@@ -118,13 +118,17 @@ function handleRequest(req, res) {
         const state = `${scope}_${randomState()}`;
         setStateCookie(res, state, sessionSecret, { secure: isSecure });
         const authUrl = getAuthRedirectUrl(scope, state, redirectUri, clientId);
+        console.error("[auth] redirect_uri=" + redirectUri + " host=" + host + " x-forwarded-proto=" + (req.headers["x-forwarded-proto"] ?? "(none)"));
         res.writeHead(302, { Location: authUrl });
         res.end();
         return;
       }
       if (req.method === "GET" && authPath === "callback/github") {
         const fullUrl = `${origin}${url}`;
+        const hasStateCookie = /ar_oauth_state=/.test(req.headers.cookie || "");
+        console.error("[auth] callback host=" + host + " redirect_uri=" + redirectUri + " has_state_cookie=" + hasStateCookie);
         const callbackReq = { ...req, url: fullUrl };
+        const log = (event, detail) => console.error("[auth] " + event + (detail ? " " + detail : ""));
         handleCallback(callbackReq, res, {
           getStateFromRequest: (r) => getStateFromRequest(r, sessionSecret),
           clearStateCookie,
@@ -136,7 +140,9 @@ function handleRequest(req, res) {
           redirectUri,
           sessionSecret,
           cookieOpts,
+          log,
         }).catch((e) => {
+          log("callback_error", e.message || "unknown");
           res.writeHead(500);
           res.end(e.message || "Callback failed");
         });
