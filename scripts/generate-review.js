@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generate review from evidence.json.
+ * evidence.json → run pipeline → write themes.json, bullets.json, stories.json, self_eval.json to --out (default: cwd).
  * Usage: node scripts/generate-review.js [path/to/evidence.json] [--out dir]
- * Writes themes.json, bullets.json, stories.json, self_eval.json to --out (default: current dir).
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";

@@ -2,8 +2,18 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    ui: true,
     globals: true,
     setupFiles: ["./test/setup.js"],
+    coverage: {
+      provider: "v8",
+      exclude: [
+        "**/*.css",
+        "**/node_modules/**",
+        "**/dist/**",
+        "**/*.config.js",
+        "test/**",
+      ],
+      reporter: ["text", "text-summary"],
+    },
   },
 });

@@ -1,11 +1,7 @@
 /**
- * On-demand collector: fetch current user's PRs (and optionally reviews) from GitHub for a date range.
- * Outputs raw JSON in the shape expected by the normalizer (pull_requests, reviews).
- *
- * Usage:
- *   GITHUB_TOKEN=ghp_xxx node scripts/collect-github.js --start 2025-01-01 --end 2025-12-31 [--output raw.json] [--no-reviews]
- *
- * Requires: GITHUB_TOKEN with repo scope (or public_repo for public only).
+ * Fetch the current user's PRs and reviews from GitHub for a date range.
+ * Output: raw JSON { timeframe, pull_requests, reviews } for the normalizer.
+ * CLI: GITHUB_TOKEN=xxx node scripts/collect-github.js --start YYYY-MM-DD --end YYYY-MM-DD [--output raw.json] [--no-reviews]
  */
 
 import { writeFileSync } from "fs";

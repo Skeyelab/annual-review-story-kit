@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/Skeyelab/annual-review-story-kit/schemas/evidence.json",
+  "$id": "https://github.com/Skeyelab/annualreview.com/schemas/evidence.json",
   "title": "Evidence",
   "description": "Input contract for the annual-review pipeline: timeframe, optional role context, and flat contributions array. See AGENTS.md.",
   "type": "object",
