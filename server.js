@@ -18,6 +18,7 @@ import { createJob, getJob, getLatestJob, runInBackground } from "./lib/job-stor
 import { createSession, getSession, destroySession } from "./lib/session-store.js";
 import {
   getAuthRedirectUrl,
+  buildCallbackRequest,
   exchangeCodeForToken,
   getGitHubUser,
   handleCallback,
@@ -127,10 +128,10 @@ function handleRequest(req, res) {
         const fullUrl = `${origin}${url}`;
         const hasStateCookie = /ar_oauth_state=/.test(req.headers.cookie || "");
         console.error("[auth] callback host=" + host + " redirect_uri=" + redirectUri + " has_state_cookie=" + hasStateCookie);
-        const callbackReq = { ...req, url: fullUrl };
+        const callbackReq = buildCallbackRequest(req, fullUrl);
         const log = (event, detail) => console.error("[auth] " + event + (detail ? " " + detail : ""));
         handleCallback(callbackReq, res, {
-          getStateFromRequest: (r) => getStateFromRequest(r, sessionSecret),
+          getStateFromRequest: (r) => getStateFromRequest(r, sessionSecret, { log }),
           clearStateCookie,
           setSessionCookie,
           createSession,

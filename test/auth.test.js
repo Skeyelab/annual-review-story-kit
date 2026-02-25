@@ -3,6 +3,7 @@ import {
   getAuthRedirectUrl,
   exchangeCodeForToken,
   getGitHubUser,
+  buildCallbackRequest,
   handleCallback,
   handleMe,
   handleLogout,
@@ -69,6 +70,22 @@ describe("auth", () => {
   });
 
   describe("handleCallback", () => {
+    it("buildCallbackRequest preserves non-enumerable headers", () => {
+      const originalReq = {};
+      Object.defineProperty(originalReq, "headers", {
+        value: { cookie: "ar_oauth_state=signed" },
+        enumerable: false,
+      });
+
+      const callbackReq = buildCallbackRequest(
+        originalReq,
+        "https://annualreview.dev/api/auth/callback/github?code=abc&state=st1"
+      );
+
+      expect(callbackReq.url).toContain("/api/auth/callback/github");
+      expect(callbackReq.headers?.cookie).toBe("ar_oauth_state=signed");
+    });
+
     it("with valid code creates session and redirects", async () => {
       const sessionId = createSession({ access_token: "old", login: "old", scope: "x" });
       destroySession(sessionId);
