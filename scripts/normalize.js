@@ -6,7 +6,7 @@
 import { readFileSync, writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { parseArgs as parseArgsBase } from "../lib/parse-args.js";
+import { parseArgs as parseArgsBase } from "../lib/parse-args.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 

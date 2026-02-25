@@ -6,7 +6,7 @@
 
 import { writeFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { parseArgs as parseArgsBase } from "../lib/parse-args.js";
+import { parseArgs as parseArgsBase } from "../lib/parse-args.ts";
 
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 

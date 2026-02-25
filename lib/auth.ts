@@ -6,19 +6,17 @@ const GITHUB_AUTH = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN = "https://github.com/login/oauth/access_token";
 const GITHUB_USER = "https://api.github.com/user";
 
-const SCOPES = {
+const SCOPES: Record<string, string> = {
   public: "read:user public_repo",
   private: "read:user repo",
 };
 
-/**
- * @param {"public" | "private"} scope
- * @param {string} state
- * @param {string} redirectUri
- * @param {string} clientId
- * @returns {string}
- */
-export function getAuthRedirectUrl(scope, state, redirectUri, clientId) {
+export function getAuthRedirectUrl(
+  scope: string,
+  state: string,
+  redirectUri: string,
+  clientId: string
+): string {
   const s = SCOPES[scope] || SCOPES.public;
   const params = new URLSearchParams({
     client_id: clientId,
@@ -29,15 +27,13 @@ export function getAuthRedirectUrl(scope, state, redirectUri, clientId) {
   return `${GITHUB_AUTH}?${params.toString()}`;
 }
 
-/**
- * @param {string} code
- * @param {string} redirectUri
- * @param {string} clientId
- * @param {string} clientSecret
- * @param {typeof fetch} fetchFn
- * @returns {Promise<string>} access_token
- */
-export async function exchangeCodeForToken(code, redirectUri, clientId, clientSecret, fetchFn) {
+export async function exchangeCodeForToken(
+  code: string,
+  redirectUri: string,
+  clientId: string,
+  clientSecret: string,
+  fetchFn: typeof fetch
+): Promise<string> {
   const res = await fetchFn(GITHUB_TOKEN, {
     method: "POST",
     headers: { Accept: "application/json", "Content-Type": "application/json" },
@@ -49,60 +45,69 @@ export async function exchangeCodeForToken(code, redirectUri, clientId, clientSe
     }),
   });
   if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
-  const data = await res.json();
+  const data = await res.json() as { error?: string; error_description?: string; access_token?: string };
   if (data.error) throw new Error(data.error_description || data.error);
   if (!data.access_token) throw new Error("No access_token in response");
   return data.access_token;
 }
 
-/**
- * @param {string} accessToken
- * @param {typeof fetch} fetchFn
- * @returns {Promise<{ login: string }>}
- */
-export async function getGitHubUser(accessToken, fetchFn) {
+export async function getGitHubUser(
+  accessToken: string,
+  fetchFn: typeof fetch
+): Promise<{ login: string }> {
   const res = await fetchFn(GITHUB_USER, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
   if (!res.ok) throw new Error(`User fetch failed: ${res.status}`);
-  const user = await res.json();
+  const user = await res.json() as { login: string };
   return { login: user.login };
+}
+
+interface CallbackRequest {
+  url?: string;
+  headers?: Record<string, string | undefined>;
 }
 
 /**
  * Build a lightweight callback request object while preserving headers.
  * Avoids object spread on IncomingMessage, which can drop non-enumerable fields.
- *
- * @param {{ headers?: object }} req
- * @param {string} fullUrl
- * @returns {{ url: string, headers?: object }}
  */
-export function buildCallbackRequest(req, fullUrl) {
+export function buildCallbackRequest(
+  req: { headers?: object },
+  fullUrl: string
+): { url: string; headers?: object } {
   return {
     url: fullUrl,
     headers: req?.headers,
   };
 }
 
-/**
- * @param {{ url?: string, headers?: { cookie?: string } }} req
- * @param {{ writeHead: (code: number, headers?: object) => void, end: (body?: string) => void, setHeader: (k: string, v: string) => void }} res
- * @param {{
- *   getStateFromRequest: (req: any) => string | null,
- *   getAndRemoveOAuthState?: (state: string) => string | null,
- *   clearStateCookie: (res: any) => void,
- *   setSessionCookie: (res: any, id: string, secret: string, opts?: object) => void,
- *   createSession: (data: object) => string,
- *   exchangeCodeForToken: (code: string, redirectUri: string) => Promise<string>,
- *   getGitHubUser: (token: string) => Promise<{ login: string }>,
- *   redirectUri: string,
- *   sessionSecret: string,
- *   cookieOpts?: { secure?: boolean },
- *   scope?: string,
- *   log?: (event: string, detail?: string) => void,
- * }} deps
- */
-export async function handleCallback(req, res, deps) {
+interface CallbackResponse {
+  writeHead: (code: number, headers?: object) => void;
+  end: (body?: string) => void;
+  setHeader: (k: string, v: string) => void;
+}
+
+interface CallbackDeps {
+  getStateFromRequest: (req: CallbackRequest) => string | null;
+  getAndRemoveOAuthState?: (state: string) => string | null;
+  clearStateCookie: (res: CallbackResponse) => void;
+  setSessionCookie: (res: CallbackResponse, id: string, secret: string, opts?: object) => void;
+  createSession: (data: object) => string;
+  exchangeCodeForToken: (code: string, redirectUri: string) => Promise<string>;
+  getGitHubUser: (token: string) => Promise<{ login: string }>;
+  redirectUri: string;
+  sessionSecret: string;
+  cookieOpts?: { secure?: boolean };
+  scope?: string;
+  log?: (event: string, detail?: string) => void;
+}
+
+export async function handleCallback(
+  req: CallbackRequest,
+  res: CallbackResponse,
+  deps: CallbackDeps
+): Promise<void> {
   const log = deps.log || (() => {});
   const url = req.url || "";
   const search = url.includes("?") ? url.slice(url.indexOf("?")) : "";
@@ -113,7 +118,7 @@ export async function handleCallback(req, res, deps) {
     deps.getStateFromRequest(req) ??
     (stateParam && deps.getAndRemoveOAuthState ? deps.getAndRemoveOAuthState(stateParam) : null);
 
-  const fail = (reason) => {
+  const fail = (reason: string) => {
     log("auth_callback_fail", reason);
     deps.clearStateCookie(res);
     res.writeHead(302, { Location: "/?error=auth_failed" });
@@ -139,11 +144,11 @@ export async function handleCallback(req, res, deps) {
 
   const scope = stateParam.includes("_") ? stateParam.slice(0, stateParam.indexOf("_")) : (deps.scope || "public");
   const redirectUri = deps.redirectUri;
-  let access_token;
+  let access_token: string;
   try {
     access_token = await deps.exchangeCodeForToken(code, redirectUri);
   } catch (e) {
-    fail(`token_exchange: ${e.message || "unknown"}`);
+    fail(`token_exchange: ${(e as Error).message || "unknown"}`);
     return;
   }
   const user = await deps.getGitHubUser(access_token);
@@ -158,12 +163,18 @@ export async function handleCallback(req, res, deps) {
   res.end();
 }
 
-/**
- * @param {{ headers?: object }} req
- * @param {{ statusCode?: number, setHeader: (k: string, v: string) => void, end: (body?: string) => void }} res
- * @param {{ getSessionIdFromRequest: (req: any) => string | null, getSession: (id: string) => { login: string, scope?: string } | undefined }} deps
- */
-export function handleMe(req, res, deps) {
+interface MeResponse {
+  writeHead: (code: number, headers?: object) => void;
+  end: (body?: string) => void;
+  setHeader: (k: string, v: string) => void;
+}
+
+interface MeDeps {
+  getSessionIdFromRequest: (req: unknown) => string | null;
+  getSession: (id: string) => { login: string; scope?: string } | undefined;
+}
+
+export function handleMe(req: unknown, res: MeResponse, deps: MeDeps): void {
   const sessionId = deps.getSessionIdFromRequest(req);
   const session = sessionId ? deps.getSession(sessionId) : undefined;
   if (!session) {
@@ -175,12 +186,18 @@ export function handleMe(req, res, deps) {
   res.end(JSON.stringify({ login: session.login, scope: session.scope }));
 }
 
-/**
- * @param {{ headers?: object }} req
- * @param {{ writeHead: (code: number) => void, end: () => void }} res
- * @param {{ getSessionIdFromRequest: (req: any) => string | null, destroySession: (id: string) => void, clearSessionCookie: (res: any) => void }} deps
- */
-export function handleLogout(req, res, deps) {
+interface LogoutResponse {
+  writeHead: (code: number) => void;
+  end: () => void;
+}
+
+interface LogoutDeps {
+  getSessionIdFromRequest: (req: unknown) => string | null;
+  destroySession: (id: string) => void;
+  clearSessionCookie: (res: LogoutResponse) => void;
+}
+
+export function handleLogout(req: unknown, res: LogoutResponse, deps: LogoutDeps): void {
   const sessionId = deps.getSessionIdFromRequest(req);
   if (sessionId) deps.destroySession(sessionId);
   deps.clearSessionCookie(res);

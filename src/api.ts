@@ -1,4 +1,4 @@
-export async function parseJsonResponse(res) {
+export async function parseJsonResponse(res: Response): Promise<unknown> {
   const text = await res.text();
   if (!text.trim()) {
     throw new Error(res.ok ? "Server returned empty response." : `Request failed (${res.status}). Server may have timed out or crashed.`);
@@ -14,11 +14,11 @@ const POLL_INITIAL_MS = 500;
 const POLL_MAX_MS = 5000;
 const POLL_BACKOFF_FACTOR = 1.5;
 
-export async function pollJob(jobId, onProgress) {
+export async function pollJob(jobId: string, onProgress?: (progress: string) => void): Promise<unknown> {
   let delayMs = POLL_INITIAL_MS;
   for (;;) {
     const res = await fetch(`/api/jobs/${jobId}`);
-    const job = await parseJsonResponse(res);
+    const job = await parseJsonResponse(res) as { status: string; error?: string; progress?: string; result?: unknown };
     if (!res.ok) throw new Error(job.error || "Job not found");
     if (job.progress && typeof onProgress === "function") onProgress(job.progress);
     if (job.status === "done") return job.result;

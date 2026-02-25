@@ -2,13 +2,11 @@
  * Shared helpers for API routes. Used by both Vite dev server and production server.js.
  */
 
+import type { IncomingMessage, ServerResponse } from "http";
+
 export const DATE_YYYY_MM_DD = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * @param {import("http").IncomingMessage} req
- * @returns {Promise<object>}
- */
-export function readJsonBody(req) {
+export function readJsonBody(req: IncomingMessage): Promise<object> {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -24,20 +22,12 @@ export function readJsonBody(req) {
   });
 }
 
-/**
- * @param {import("http").ServerResponse} res
- * @param {number} status
- * @param {object} data
- */
-export function respondJson(res, status, data) {
+export function respondJson(res: ServerResponse, status: number, data: object): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(data));
 }
 
-/**
- * @returns {string}
- */
-export function randomState() {
+export function randomState(): string {
   return `st_${Date.now()}_${Math.random().toString(36).slice(2, 15)}`;
 }

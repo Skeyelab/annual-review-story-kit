@@ -11,11 +11,11 @@ import { fileURLToPath } from "url";
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const DIST = join(__dirname, "dist");
 
-import { runPipeline } from "./lib/run-pipeline.js";
-import { collectAndNormalize } from "./lib/collect-and-normalize.js";
-import { validateEvidence } from "./lib/validate-evidence.js";
-import { createJob, getJob, getLatestJob, runInBackground } from "./lib/job-store.js";
-import { createSession, getSession, destroySession, setOAuthState, getAndRemoveOAuthState } from "./lib/session-store.js";
+import { runPipeline } from "./lib/run-pipeline.ts";
+import { collectAndNormalize } from "./lib/collect-and-normalize.ts";
+import { validateEvidence } from "./lib/validate-evidence.ts";
+import { createJob, getJob, getLatestJob, runInBackground } from "./lib/job-store.ts";
+import { createSession, getSession, destroySession, setOAuthState, getAndRemoveOAuthState } from "./lib/session-store.ts";
 import {
   getAuthRedirectUrl,
   buildCallbackRequest,
@@ -24,7 +24,7 @@ import {
   handleCallback,
   handleMe,
   handleLogout,
-} from "./lib/auth.js";
+} from "./lib/auth.ts";
 import {
   getSessionIdFromRequest,
   setSessionCookie,
@@ -32,8 +32,8 @@ import {
   setStateCookie,
   getStateFromRequest,
   clearStateCookie,
-} from "./lib/cookies.js";
-import { readJsonBody, respondJson, randomState, DATE_YYYY_MM_DD } from "./server/helpers.js";
+} from "./lib/cookies.ts";
+import { readJsonBody, respondJson, randomState, DATE_YYYY_MM_DD } from "./server/helpers.ts";
 import { authRoutes } from "./server/routes/auth.js";
 import { jobsRoutes } from "./server/routes/jobs.js";
 import { generateRoutes } from "./server/routes/generate.js";
