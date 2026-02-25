@@ -16,7 +16,7 @@
       "additionalProperties": false
     },
     "role_context_optional": {
-      "type": "object",
+      "type": ["object", "null"],
       "properties": {
         "level": { "type": "string" },
         "job_family": { "type": "string" },

@@ -37,6 +37,68 @@
   color: var(--text);
 }
 
+.generate-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.generate-signed-in {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.generate-logout {
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.generate-logout:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+.generate-oauth-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.generate-oauth-btn {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.generate-oauth-btn:hover {
+  background: var(--accent-dim);
+}
+
+.generate-oauth-btn-private {
+  background: var(--text-muted);
+}
+
+.generate-oauth-btn-private:hover {
+  background: var(--text);
+}
+
+.generate-or {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
 .generate-main {
   flex: 1;
   max-width: 48rem;
@@ -296,6 +358,12 @@
   color: #e57373;
   margin: 0 0 1rem;
   font-size: 0.9rem;
+}
+
+.generate-progress {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
 }
 
 .generate-btn {

@@ -161,7 +161,7 @@ function normalize(raw, start, end) {
   const rawCommits = raw.commits || [];
   const commitShaToPr = new Map(); // optional: if raw has pull_requests, we know which commits belong to PRs
   for (const pr of rawPrs) {
-    const shas = pr.commits || [];
+    const shas = Array.isArray(pr.commits) ? pr.commits : [];
     for (const c of shas) {
       const sha = typeof c === "string" ? c : (c.sha || c.commit?.sha);
       if (sha) commitShaToPr.set(sha, true);
