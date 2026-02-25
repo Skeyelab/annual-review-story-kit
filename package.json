@@ -1,7 +1,13 @@
 {
-  "name": "annual-review-story-kit",
+  "name": "annualreview-com",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "resolutions": {
+    "vite": "6.4.1"
+  },
   "description": "AnnualReview.dev",
   "homepage": "https://annualreview.dev",
   "scripts": {
@@ -14,7 +20,8 @@
     "preview": "vite preview",
     "start": "node server.js",
     "test": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "type": "module",
   "dependencies": {
@@ -31,7 +38,8 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitest/ui": "^4.0.18",
+    "@vitest/coverage-v8": "4.0.18",
+    "@vitest/ui": "4.0.18",
     "jsdom": "^28.1.0",
     "vite": "^6.0.3",
     "vitest": "^4.0.18"

@@ -16,10 +16,15 @@ This repo contains:
    - `prompts/30_star_stories.md`
    - `prompts/40_self_eval_sections.md`
 
+## How to get the data to paste
+
+**Quick path:** [docs/how-to-get-evidence.md](docs/how-to-get-evidence.md) — create a GitHub token, run collect + normalize, then paste or upload **evidence.json** on the Generate page.
+
 ## Scripts
+
 - **Collect (on-demand):** `GITHUB_TOKEN=xxx yarn collect --start YYYY-MM-DD --end YYYY-MM-DD --output raw.json` — fetches your PRs and reviews from GitHub for the date range. No cron required; run when you want fresh data.
 - **Normalize:** `yarn normalize --input raw.json --output evidence.json` — turns raw API output into the evidence contract.
-- **Generate:** `yarn generate evidence.json` — runs the LLM pipeline (themes → bullets → STAR → self-eval). Requires `OPENAI_API_KEY`.
+- **Generate:** `yarn generate evidence.json` — runs the LLM pipeline (themes → bullets → STAR → self-eval). Writes to `./out` by default; use `--out dir` to override. Requires `OPENAI_API_KEY`.
 
 See `docs/data-collection.md` for on-demand vs optional periodic (cron) refresh. For future Slack/Jira and other sources, see `docs/multi-source-plan.md`.
 
