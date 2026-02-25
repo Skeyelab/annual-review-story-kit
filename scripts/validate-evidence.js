@@ -1,7 +1,4 @@
-/**
- * Validate a JSON file against schemas/evidence.json.
- * Usage: node scripts/validate-evidence.js [path/to/evidence.json]
- */
+// Validate a JSON file against schemas/evidence.json. Usage: node scripts/validate-evidence.js [path]
 
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";

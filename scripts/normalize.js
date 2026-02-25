@@ -1,9 +1,6 @@
 /**
- * Normalizer Agent: raw GitHub API responses → evidence.json (AGENTS.md contract).
- * Deduplicate: squash commits under PRs; keep commits only when not associated with PRs.
- *
- * Usage: node scripts/normalize.js [--input raw.json] [--output evidence.json] [--start YYYY-MM-DD] [--end YYYY-MM-DD]
- * Input JSON shape: { "pull_requests": [...], "reviews": [...], "releases": [...], "commits": [...] } (all optional).
+ * Raw GitHub JSON → evidence JSON (AGENTS.md contract). Dedupes: commits under PRs are dropped; orphan commits kept.
+ * CLI: node scripts/normalize.js [--input raw.json] [--output evidence.json] [--start/--end YYYY-MM-DD]
  */
 
 import { readFileSync, writeFileSync } from "fs";
@@ -11,7 +8,6 @@ import { fileURLToPath } from "url";
 import { dirname, join } from "path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SCHEMA_PATH = join(__dirname, "..", "schemas", "evidence.json");
 
 function parseArgs() {
   const args = process.argv.slice(2);
