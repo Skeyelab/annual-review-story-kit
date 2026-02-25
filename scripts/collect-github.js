@@ -7,7 +7,6 @@
 import { writeFileSync } from "fs";
 import { fileURLToPath } from "url";
 
-const GITHUB_API = "https://api.github.com";
 const GITHUB_GRAPHQL = "https://api.github.com/graphql";
 
 const SEARCH_PR_PAGE_SIZE = 100;
