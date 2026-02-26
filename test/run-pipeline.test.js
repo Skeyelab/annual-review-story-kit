@@ -7,6 +7,7 @@ const mockStories = { stories: [] };
 const mockSelfEval = { sections: { summary: { text: "Done" } } };
 
 let createCallCount = 0;
+let lastCreateArgs = [];
 function MockOpenAI() {
   const contents = [
     JSON.stringify(mockThemes),
@@ -17,8 +18,9 @@ function MockOpenAI() {
   let i = 0;
   this.chat = {
     completions: {
-      create: () => {
+      create: (args) => {
         createCallCount++;
+        lastCreateArgs.push(args);
         return Promise.resolve({ choices: [{ message: { content: contents[i++ % 4] } }] });
       },
     },
@@ -52,6 +54,7 @@ describe("extractJson", () => {
 describe("runPipeline", () => {
   beforeEach(() => {
     createCallCount = 0;
+    lastCreateArgs = [];
     clearPipelineCache();
     process.env.POSTHOG_API_KEY = "ph_test";
   });
@@ -85,6 +88,35 @@ describe("runPipeline", () => {
       if (origOR !== undefined) process.env.OPENROUTER_API_KEY = origOR;
       else delete process.env.OPENROUTER_API_KEY;
       if (origOAI !== undefined) process.env.OPENAI_API_KEY = origOAI;
+    }
+  });
+
+  it("sets posthogProviderOverride=openrouter when PostHog and OpenRouter are both active", async () => {
+    const origOR = process.env.OPENROUTER_API_KEY;
+    const origOAI = process.env.OPENAI_API_KEY;
+    process.env.OPENROUTER_API_KEY = "sk-or-test";
+    delete process.env.OPENAI_API_KEY;
+    try {
+      await runPipeline({ timeframe: { start_date: "2025-01-01", end_date: "2025-12-31" }, contributions: [] });
+      expect(lastCreateArgs.length).toBe(4);
+      for (const args of lastCreateArgs) {
+        expect(args).toMatchObject({ posthogProviderOverride: "openrouter" });
+      }
+    } finally {
+      if (origOR !== undefined) process.env.OPENROUTER_API_KEY = origOR;
+      else delete process.env.OPENROUTER_API_KEY;
+      if (origOAI !== undefined) process.env.OPENAI_API_KEY = origOAI;
+    }
+  });
+
+  it("does not set posthogProviderOverride when using OpenAI directly", async () => {
+    const evidence = {
+      timeframe: { start_date: "2025-01-01", end_date: "2025-12-31" },
+      contributions: [],
+    };
+    await runPipeline(evidence, { apiKey: "sk-test" });
+    for (const args of lastCreateArgs) {
+      expect(args).not.toHaveProperty("posthogProviderOverride");
     }
   });
 

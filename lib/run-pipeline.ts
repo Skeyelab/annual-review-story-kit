@@ -237,6 +237,7 @@ export async function runPipeline(
   if (posthogTraceId != null) posthogOpts.posthogTraceId = posthogTraceId;
   if (posthogDistinctId != null) posthogOpts.posthogDistinctId = posthogDistinctId;
   if (phClient) posthogOpts.posthogCaptureImmediate = true; // send each generation immediately so we don't rely on shutdown flush
+  if (phClient && baseURL?.includes("openrouter.ai")) posthogOpts.posthogProviderOverride = "openrouter"; // correct $ai_provider in PostHog LLM analytics
 
   try {
   const totalStart = Date.now();
