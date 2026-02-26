@@ -3,4 +3,4 @@ web: cd backend && (test -f tmp/pids/server.pid && ! kill -0 $(cat tmp/pids/serv
 # Vite dev server (port 5173). Proxies /api and /auth to Rails.
 frontend: yarn workspace frontend dev
 # Solid Queue worker for collect/generate jobs.
-jobs: cd backend && bin/jobs
+jobs: cd backend && bin/jobs start
