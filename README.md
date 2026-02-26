@@ -29,7 +29,7 @@ The app needs a Node server in production so `/api/auth/*` and other API routes 
 
 **Required env in production:** `SESSION_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and either `OPENROUTER_API_KEY` **or** `OPENAI_API_KEY` (OpenRouter is recommended — see below). In GitHub OAuth App settings, set **Authorization callback URL** to `https://<your-domain>/api/auth/callback/github`. See [docs/oauth-scopes.md](docs/oauth-scopes.md).
 
-**OpenRouter (recommended):** Set `OPENROUTER_API_KEY` to your [OpenRouter](https://openrouter.ai) key. The pipeline defaults to `google/gemini-2.0-flash` — faster and cheaper than `gpt-4o-mini` with equal or better quality for structured generation. Override the model with `LLM_MODEL` (e.g. `LLM_MODEL=anthropic/claude-3.5-haiku`). When `OPENROUTER_API_KEY` is set it takes priority over `OPENAI_API_KEY`.
+**OpenRouter (recommended):** Set `OPENROUTER_API_KEY` to your [OpenRouter](https://openrouter.ai) key. The pipeline defaults to `anthropic/claude-3.5-sonnet` — best-in-class instruction following and structured JSON quality for performance review generation. Override the model with `LLM_MODEL` (e.g. `LLM_MODEL=google/gemini-2.0-flash` for a faster/cheaper option). When `OPENROUTER_API_KEY` is set it takes priority over `OPENAI_API_KEY`.
 
 **OpenAI (legacy):** Set `OPENAI_API_KEY`. Default model is `gpt-4o-mini`; override with `LLM_MODEL`.
 

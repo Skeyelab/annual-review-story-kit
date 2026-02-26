@@ -191,7 +191,7 @@ export async function runPipeline(
   evidence: Evidence,
   {
     apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY,
-    model = process.env.LLM_MODEL ?? (process.env.OPENROUTER_API_KEY ? "google/gemini-2.0-flash" : "gpt-4o-mini"),
+    model = process.env.LLM_MODEL ?? (process.env.OPENROUTER_API_KEY ? "anthropic/claude-3.5-sonnet" : "gpt-4o-mini"),
     baseURL = process.env.OPENROUTER_API_KEY ? "https://openrouter.ai/api/v1" : undefined,
     onProgress,
     posthogTraceId,
