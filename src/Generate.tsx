@@ -1,5 +1,6 @@
 // Page: 1) Get GitHub data (OAuth or token or CLI), 2) Paste/upload evidence JSON, 3) Generate → themes, bullets, stories, self-eval.
 import React, { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import "./Generate.css";
 import { generateMarkdown } from "../lib/generate-markdown.js";
 import type { Timeframe } from "../types/evidence.js";
@@ -584,7 +585,9 @@ function ReportSection({
         </div>
       </div>
       {showPreview && (
-        <pre className="generate-pre generate-report-pre">{md}</pre>
+        <div className="generate-report-rendered">
+          <ReactMarkdown>{md}</ReactMarkdown>
+        </div>
       )}
     </section>
   );
