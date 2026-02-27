@@ -36,30 +36,75 @@ function respondJson(res, status, data) {
   res.end(JSON.stringify(data));
 }
 
+function makeRouteOptions(overrides = {}) {
+  return {
+    respondJson,
+    getStripe: () => null,
+    getPostHog: () => ({ isFeatureEnabled: vi.fn().mockResolvedValue(true) }),
+    getSessionIdFromRequest: () => null,
+    getSession: () => undefined,
+    ...overrides,
+  };
+}
+
 describe("paymentsRoutes – config", () => {
   it("returns enabled:false when Stripe is not configured", async () => {
-    const handler = paymentsRoutes({ respondJson, getStripe: () => null });
+    const handler = paymentsRoutes(makeRouteOptions({ getStripe: () => null }));
     const req = mockReq("GET", "/config");
     const res = mockRes();
     await handler(req, res, () => {});
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ enabled: false });
+    expect(res.body).toMatchObject({ enabled: false, price_cents: 100, credits_per_purchase: 5 });
   });
 
-  it("returns enabled:true when Stripe is configured", async () => {
+  it("returns enabled:false when feature flag is off", async () => {
     const mockStripe = { checkout: { sessions: {} } };
-    const handler = paymentsRoutes({ respondJson, getStripe: () => /** @type {any} */ (mockStripe) });
+    const handler = paymentsRoutes(
+      makeRouteOptions({
+        getStripe: () => /** @type {any} */ (mockStripe),
+        getPostHog: () => ({ isFeatureEnabled: vi.fn().mockResolvedValue(false) }),
+      })
+    );
     const req = mockReq("GET", "/config");
     const res = mockRes();
     await handler(req, res, () => {});
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ enabled: true });
+    expect(res.body).toMatchObject({ enabled: false });
+  });
+
+  it("returns enabled:true when Stripe is configured and flag is on", async () => {
+    const mockStripe = { checkout: { sessions: {} } };
+    const handler = paymentsRoutes(
+      makeRouteOptions({ getStripe: () => /** @type {any} */ (mockStripe) })
+    );
+    const req = mockReq("GET", "/config");
+    const res = mockRes();
+    await handler(req, res, () => {});
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ enabled: true, price_cents: 100, credits_per_purchase: 5 });
   });
 });
 
 describe("paymentsRoutes – checkout", () => {
+  it("returns 503 when feature flag is disabled", async () => {
+    const handler = paymentsRoutes(
+      makeRouteOptions({
+        getPostHog: () => ({ isFeatureEnabled: vi.fn().mockResolvedValue(false) }),
+      })
+    );
+    const req = mockReq("POST", "/checkout");
+    const res = mockRes();
+    await new Promise((resolve) => {
+      setTimeout(resolve, 50);
+      handler(req, res, resolve);
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(res.statusCode).toBe(503);
+    expect(res.body.error).toMatch(/disabled/i);
+  });
+
   it("returns 503 when STRIPE_SECRET_KEY is not set", async () => {
-    const handler = paymentsRoutes({ respondJson, getStripe: () => null });
+    const handler = paymentsRoutes(makeRouteOptions({ getStripe: () => null }));
     const req = mockReq("POST", "/checkout");
     const res = mockRes();
     await new Promise((resolve) => {
@@ -80,7 +125,13 @@ describe("paymentsRoutes – checkout", () => {
         },
       },
     };
-    const handler = paymentsRoutes({ respondJson, getStripe: () => /** @type {any} */ (mockStripe) });
+    const handler = paymentsRoutes(
+      makeRouteOptions({
+        getStripe: () => /** @type {any} */ (mockStripe),
+        getSessionIdFromRequest: () => "session_1",
+        getSession: () => ({ login: "edahl" }),
+      })
+    );
     const req = mockReq("POST", "/checkout");
     const res = mockRes();
     await new Promise((resolve, reject) => {
@@ -95,6 +146,7 @@ describe("paymentsRoutes – checkout", () => {
     expect(mockStripe.checkout.sessions.create).toHaveBeenCalledWith(
       expect.objectContaining({
         mode: "payment",
+        metadata: { user_login: "edahl" },
         line_items: expect.arrayContaining([
           expect.objectContaining({ quantity: 1 }),
         ]),
@@ -103,7 +155,7 @@ describe("paymentsRoutes – checkout", () => {
   });
 
   it("passes non-POST to next", async () => {
-    const handler = paymentsRoutes({ respondJson, getStripe: () => null });
+    const handler = paymentsRoutes(makeRouteOptions({ getStripe: () => null }));
     const req = mockReq("GET", "/checkout");
     const res = mockRes();
     let nextCalled = false;
@@ -114,7 +166,7 @@ describe("paymentsRoutes – checkout", () => {
 
 describe("paymentsRoutes – webhook", () => {
   it("returns 503 when not configured", async () => {
-    const handler = paymentsRoutes({ respondJson, getStripe: () => null });
+    const handler = paymentsRoutes(makeRouteOptions({ getStripe: () => null }));
     const req = mockReq("POST", "/webhook", {}, { "stripe-signature": "t=1,v1=abc" });
     const res = mockRes();
     await new Promise((resolve) => {
@@ -134,7 +186,9 @@ describe("paymentsRoutes – webhook", () => {
     const origSecret = process.env.STRIPE_WEBHOOK_SECRET;
     process.env.STRIPE_WEBHOOK_SECRET = "whsec_test";
     try {
-    const handler = paymentsRoutes({ respondJson, getStripe: () => /** @type {any} */ (mockStripe) });
+      const handler = paymentsRoutes(
+        makeRouteOptions({ getStripe: () => /** @type {any} */ (mockStripe) })
+      );
       const req = mockReq("POST", "/webhook");
       const res = mockRes();
       await new Promise((resolve) => {
