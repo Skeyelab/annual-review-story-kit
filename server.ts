@@ -3,7 +3,7 @@
  * For Coolify (or any Node host): run `yarn build && yarn start` (or `node --import tsx/esm server.ts`).
  * Set PORT (default 3000), SESSION_SECRET, GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, and either OPENROUTER_API_KEY (recommended) or OPENAI_API_KEY.
  * Optional: LLM_MODEL to override the default model (anthropic/claude-3.5-sonnet for OpenRouter, gpt-4o-mini for OpenAI).
- * Optional: POSTHOG_API_KEY (and POSTHOG_HOST) for LLM analytics in PostHog.
+ * Optional: POSTHOG_API_KEY (and POSTHOG_HOST) for LLM analytics and Node logs in PostHog.
  *
  * --- Premium credits (SQLite) ---
  * Optional: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_CENTS (default 100), STRIPE_CURRENCY (default "usd"), CREDITS_PER_PURCHASE (default 5).
@@ -70,6 +70,7 @@ import { authRoutes } from "./server/routes/auth.ts";
 import { jobsRoutes } from "./server/routes/jobs.ts";
 import { generateRoutes } from "./server/routes/generate.ts";
 import { collectRoutes } from "./server/routes/collect.ts";
+import { logger } from "./lib/posthog-logs.ts";
 import { paymentsRoutes } from "./server/routes/payments.ts";
 
 const MIME: Record<string, string> = {
@@ -202,12 +203,20 @@ function handleRequest(
         createJob,
         runInBackground,
         runPipeline,
+        getSessionIdFromRequest: (r) =>
+          getSessionIdFromRequest(r, sessionSecret),
+        getSession,
       })(wrappedReq, res, next);
       return;
     }
 
     if (area === "payments") {
-      paymentsRoutes({ respondJson })(wrappedReq, res, next);
+      paymentsRoutes({
+        respondJson,
+        getSessionIdFromRequest: (r) =>
+          getSessionIdFromRequest(r, sessionSecret),
+        getSession,
+      })(wrappedReq, res, next);
       return;
     }
 
@@ -233,4 +242,9 @@ function handleRequest(
 const port = Number(process.env.PORT) || 3000;
 createServer(handleRequest).listen(port, () => {
   console.log(`Server listening on http://localhost:${port}`);
+  logger.emit({
+    severityText: "INFO",
+    body: `Server listening on port ${port}`,
+    attributes: { port },
+  });
 });
