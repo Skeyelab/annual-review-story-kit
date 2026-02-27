@@ -11,6 +11,9 @@ import { useGitHubCollect } from "./hooks/useGitHubCollect";
 import CollectForm from "./CollectForm";
 import NarrativeView, { type NarrativeViewProps } from "./NarrativeView";
 
+/** Milliseconds to wait for React state to settle before auto-generating after Stripe redirect. */
+const STRIPE_RETURN_DELAY_MS = 100;
+
 const GITHUB_TOKEN_URL =
   "https://github.com/settings/tokens/new?scopes=repo&description=AnnualReview.dev";
 const REPO_URL = "https://github.com/Skeyelab/annualreview.com";
@@ -29,7 +32,13 @@ export default function Generate() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState("");
   const [result, setResult] = useState<PipelineResultLike | null>(null);
+  const [isPremiumResult, setIsPremiumResult] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentsEnabled, setPaymentsEnabled] = useState(false);
+  const [creditsPerPurchase, setCreditsPerPurchase] = useState(5);
+  const [priceCents, setPriceCents] = useState(100);
+  /** Credits remaining for the stored Stripe session ID, or null if unknown. */
+  const [premiumCredits, setPremiumCredits] = useState<number | null>(null);
 
   const onEvidenceReceived = useCallback((text: string) => {
     setEvidenceText(text);
@@ -45,7 +54,39 @@ export default function Generate() {
       setAuthError(true);
       window.history.replaceState({}, "", window.location.pathname);
     }
+    // After returning from Stripe, persist session ID to localStorage for reuse across sessions.
+    const sessionId = params.get("session_id");
+    const isPremium = params.get("premium") === "1";
+    if (sessionId && isPremium) {
+      window.history.replaceState({}, "", window.location.pathname);
+      try { localStorage.setItem("premium_stripe_session_id", sessionId); } catch { /* ignore */ }
+      // Also store in sessionStorage so the post-redirect auto-generate effect picks it up.
+      try { sessionStorage.setItem("stripe_session_id", sessionId); } catch { /* ignore */ }
+    }
   }, []);
+
+  useEffect(() => {
+    fetch("/api/payments/config")
+      .then((res) => (res.ok ? res.json() : { enabled: false }))
+      .then((data: { enabled?: boolean; credits_per_purchase?: number; price_cents?: number }) => {
+        setPaymentsEnabled(!!data.enabled);
+        if (data.credits_per_purchase) setCreditsPerPurchase(data.credits_per_purchase);
+        if (data.price_cents) setPriceCents(data.price_cents);
+      })
+      .catch(() => setPaymentsEnabled(false));
+  }, []);
+
+  // Check how many credits remain for any previously-stored Stripe session
+  useEffect(() => {
+    if (!paymentsEnabled) return;
+    let sessionId: string | null = null;
+    try { sessionId = localStorage.getItem("premium_stripe_session_id"); } catch { /* ignore */ }
+    if (!sessionId) return;
+    fetch(`/api/payments/credits/${encodeURIComponent(sessionId)}`)
+      .then((res) => (res.ok ? res.json() : { credits: 0 }))
+      .then((data: { credits?: number }) => setPremiumCredits(data.credits ?? 0))
+      .catch(() => {});
+  }, [paymentsEnabled]);
 
   const {
     collectStart,
@@ -75,7 +116,7 @@ export default function Generate() {
       .catch(() => {});
   }, [user]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (stripeSessionId?: string) => {
     let evidence: Record<string, unknown>;
     try {
       evidence = JSON.parse(evidenceText) as Record<string, unknown>;
@@ -107,11 +148,15 @@ export default function Generate() {
     ) {
       evidence = { ...evidence, goals: (goals as string).trim() };
     }
+    if (stripeSessionId) {
+      evidence = { ...evidence, _stripe_session_id: stripeSessionId };
+    }
     setError(null);
     setLoading(true);
     setResult(null);
+    setIsPremiumResult(false);
     setProgress("");
-    posthog?.capture("review_generate_started");
+    posthog?.capture("review_generate_started", { premium: !!stripeSessionId });
     try {
       const res = await fetch("/api/generate", {
         method: "POST",
@@ -120,13 +165,19 @@ export default function Generate() {
       });
       const data = (await parseJsonResponse(res)) as {
         job_id?: string;
+        premium?: boolean;
         error?: string;
         [key: string]: unknown;
       };
       if (res.status === 202 && data.job_id) {
         const out = await pollJob(data.job_id, setProgress);
         setResult(out as PipelineResultLike);
-        posthog?.capture("review_generate_completed");
+        setIsPremiumResult(!!data.premium);
+        // Update displayed credit count if the server returned updated remaining credits
+        if (typeof data.credits_remaining === "number") {
+          setPremiumCredits(data.credits_remaining);
+        }
+        posthog?.capture("review_generate_completed", { premium: !!data.premium });
       } else if (!res.ok) {
         throw new Error((data.error as string) || "Generate failed");
       } else {
@@ -142,6 +193,73 @@ export default function Generate() {
       setProgress("");
     }
   };
+
+  const handleUsePremiumCredit = () => {
+    let sessionId: string | null = null;
+    try { sessionId = localStorage.getItem("premium_stripe_session_id"); } catch { /* ignore */ }
+    if (!sessionId) return;
+    handleGenerate(sessionId);
+  };
+
+  const handleUpgradeToPremium = async () => {
+    // Check we have valid evidence before redirecting to payment
+    try {
+      const ev = JSON.parse(evidenceText) as Record<string, unknown>;
+      const tf = ev.timeframe as { start_date?: string; end_date?: string } | undefined;
+      if (!tf?.start_date || !tf?.end_date || !Array.isArray(ev.contributions)) {
+        setError("Please load your evidence data first, then upgrade.");
+        return;
+      }
+    } catch {
+      setError("Please load your evidence data first, then upgrade.");
+      return;
+    }
+    setError(null);
+    // Save evidence so it survives the Stripe redirect
+    try {
+      sessionStorage.setItem("premium_evidence", evidenceText);
+      if (goals.trim()) sessionStorage.setItem("premium_goals", goals);
+    } catch {
+      // sessionStorage not available (unlikely in browser, ignore)
+    }
+    try {
+      const res = await fetch("/api/payments/checkout", { method: "POST" });
+      const data = (await parseJsonResponse(res)) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error || "Could not start checkout");
+      }
+      posthog?.capture("premium_checkout_started");
+      window.location.href = data.url;
+    } catch (e) {
+      setError((e as Error).message || "Payment service unavailable. Try again later.");
+    }
+  };
+
+  // After returning from Stripe, restore evidence and auto-generate premium report
+  useEffect(() => {
+    let savedSessionId: string | null = null;
+    try { savedSessionId = sessionStorage.getItem("stripe_session_id"); } catch { /* ignore */ }
+    if (!savedSessionId) return;
+    try { sessionStorage.removeItem("stripe_session_id"); } catch { /* ignore */ }
+    let savedEvidence: string | null = null;
+    let savedGoals: string | null = null;
+    try { savedEvidence = sessionStorage.getItem("premium_evidence"); } catch { /* ignore */ }
+    try { savedGoals = sessionStorage.getItem("premium_goals"); } catch { /* ignore */ }
+    if (savedEvidence) {
+      try { sessionStorage.removeItem("premium_evidence"); } catch { /* ignore */ }
+      setEvidenceText(savedEvidence);
+    }
+    if (savedGoals) {
+      try { sessionStorage.removeItem("premium_goals"); } catch { /* ignore */ }
+      setGoals(savedGoals);
+    }
+    if (savedEvidence) {
+      // Short timeout to let state settle before generating
+      const timer = setTimeout(() => handleGenerate(savedSessionId!), STRIPE_RETURN_DELAY_MS);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -501,18 +619,49 @@ yarn normalize --input raw.json --output evidence.json`}
         {error && <p className="generate-error">{error}</p>}
         {progress && <p className="generate-progress">{progress}</p>}
 
-        <button
-          type="button"
-          className="generate-btn"
-          onClick={handleGenerate}
-          disabled={loading}
-        >
-          {loading ? "Generating…" : "3. Generate review"}
-        </button>
+        <div className="generate-actions">
+          <button
+            type="button"
+            className="generate-btn"
+            onClick={() => handleGenerate()}
+            disabled={loading}
+          >
+            {loading ? "Generating…" : paymentsEnabled ? "3. Generate review (free)" : "3. Generate review"}
+          </button>
+          {paymentsEnabled && (
+            premiumCredits !== null && premiumCredits > 0 ? (
+              <button
+                type="button"
+                className="generate-btn generate-btn-premium"
+                onClick={handleUsePremiumCredit}
+                disabled={loading}
+                title="Uses a state-of-the-art model for a higher quality report"
+              >
+                ✦ Generate premium report
+                <span className="generate-btn-credits">{premiumCredits} credit{premiumCredits !== 1 ? "s" : ""} left</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="generate-btn generate-btn-premium"
+                onClick={handleUpgradeToPremium}
+                disabled={loading}
+                title={`${creditsPerPurchase} premium runs for $${(priceCents / 100).toFixed(2)} — uses a state-of-the-art model`}
+              >
+                ✦ Get {creditsPerPurchase} premium runs (${(priceCents / 100).toFixed(2)})
+              </button>
+            )
+          )}
+        </div>
 
         {result && (
           <div className="generate-result">
-            <h2>Your review</h2>
+            <h2>
+              Your review
+              {isPremiumResult && (
+                <span className="generate-premium-badge">✦ Premium</span>
+              )}
+            </h2>
             <NarrativeView {...(result as NarrativeViewProps)} />
             <ReportSection
               result={result}
